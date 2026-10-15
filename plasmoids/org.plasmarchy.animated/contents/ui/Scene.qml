@@ -161,7 +161,6 @@ Item {
         readonly property real oy: (height - lines.length * ch) / 2
         readonly property string noise: "ｱｲｳｴｵｶｷｸ01<>{}[]=+*#%&$@?!/\\|"
         readonly property var modes: ["decrypt", "scatter", "fall", "sweep"]
-        property int mode: 0
         property real t: 0            // 0..1 build-up, then hold, then 1..2 dissolve
         readonly property var cells: {
             var out = []
@@ -184,54 +183,88 @@ Item {
             if (newT !== t) t = newT
         }
         readonly property int cycleNo: Math.floor(scene.clock / cycle)
-        onCycleNoChanged: mode = (mode + 1) % modes.length
+        readonly property int mode: cycleNo % modes.length
         readonly property bool moving: phase < 4.3 || phase > 13.1
 
-        // the characters are drawn white, this shader colors them (so the color wave costs no CPU)
-        layer.enabled: active
-        layer.effect: ShaderEffect {
-            readonly property size size: Qt.size(ascii.width, ascii.height)
+        // the characters, drawn once into textures: one slot per logo cell, and a row of noise glyphs
+        readonly property real slotWidth: cw * 1.5
+        readonly property real fontSize: ch * 0.95
+        Item {
+            id: glyphAtlas
+            width: Math.max(1, ascii.cols * ascii.slotWidth); height: Math.max(1, ascii.lines.length * ascii.ch)
+            visible: ascii.active
+            Repeater {
+                model: ascii.active ? ascii.cells : []
+                Text {
+                    required property var modelData
+                    x: modelData.c * ascii.slotWidth; y: modelData.r * ascii.ch
+                    width: ascii.slotWidth; height: ascii.ch
+                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: ascii.fontSize
+                    color: "white"
+                    text: modelData.ch
+                }
+            }
+        }
+        Row {
+            id: noiseAtlas
+            visible: ascii.active
+            Repeater {
+                model: ascii.active ? ascii.noise.length : 0
+                Text {
+                    required property int index
+                    width: ascii.slotWidth; height: ascii.ch
+                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: ascii.fontSize
+                    color: "white"
+                    text: ascii.noise[index]
+                }
+            }
+        }
+        ShaderEffectSource { id: glyphTexture; sourceItem: glyphAtlas; hideSource: true; smooth: true; width: 0; height: 0 }
+        Item {   // one pixel per cell that holds a character (spaces get no noise glyphs while decrypting)
+            id: occupancy
+            width: ascii.cols; height: Math.max(1, ascii.lines.length)
+            visible: ascii.active
+            Repeater {
+                model: ascii.active ? ascii.cells : []
+                Rectangle { required property var modelData; x: modelData.c; y: modelData.r; width: 1; height: 1 }
+            }
+        }
+        ShaderEffectSource { id: noiseTexture; sourceItem: noiseAtlas; hideSource: true; smooth: true; width: 0; height: 0 }
+        ShaderEffectSource {
+            id: occupancyTexture; sourceItem: occupancy; hideSource: true; smooth: false; width: 0; height: 0
+            textureSize: Qt.size(occupancy.width, occupancy.height)
+        }
+
+        // every cell moves on the GPU (shaders/logo.vert): the CPU only advances t
+        ShaderEffect {
+            anchors.fill: parent
+            visible: ascii.active && ascii.cells.length > 0
+            mesh: GridMesh { resolution: Qt.size(Math.max(1, 4 * ascii.cols * ascii.lines.length - 1), 1) }
+            readonly property size size: Qt.size(width, height)
             readonly property point origin: Qt.point(ascii.ox, ascii.oy)
             readonly property size cellSize: Qt.size(ascii.cw, ascii.ch)
+            readonly property real slotWidth: ascii.slotWidth
             readonly property real cols: ascii.cols
+            readonly property real rows: Math.max(1, ascii.lines.length)
+            readonly property real t: ascii.t
+            readonly property real mode: ascii.mode
             readonly property real shimmer: ascii.shimmer
+            readonly property real noiseCount: ascii.noise.length
             readonly property color fg: scene.foreground
             readonly property color accent: scene.accent
             readonly property color c0: scene.col(0)
             readonly property color c1: scene.col(1)
             readonly property color c2: scene.col(2)
             readonly property color c3: scene.col(3)
+            readonly property var glyphs: glyphTexture
+            readonly property var noiseGlyphs: noiseTexture
+            readonly property var occupied: occupancyTexture
+            vertexShader: "../shaders/logo.vert.qsb"
             fragmentShader: "../shaders/logo.frag.qsb"
-        }
-
-        Repeater {
-            model: ascii.active ? ascii.cells : []
-            delegate: Text {
-                required property var modelData
-                readonly property var m: modelData
-                readonly property string kind: ascii.modes[ascii.mode]
-                // per-cell progress: staggered by position / chance, depending on the mode
-                readonly property real delay: kind === "fall" ? m.c / ascii.cols * 0.55 + m.seed * 0.1
-                                            : kind === "sweep" ? m.c / ascii.cols * 0.7
-                                            : m.seed * 0.6
-                readonly property real p: ascii.t <= 1 ? ascii.ease((ascii.t - delay) / 0.4) : 1
-                readonly property real out: ascii.t > 1 ? ascii.ease((ascii.t - 1 - m.seed * 0.5) / 0.5) : 0
-                readonly property real hx: ascii.ox + m.c * ascii.cw
-                readonly property real hy: ascii.oy + m.r * ascii.ch
-                x: kind === "scatter" ? m.sx * scene.width + (hx - m.sx * scene.width) * p : hx
-                y: kind === "scatter" ? m.sy * scene.height + (hy - m.sy * scene.height) * p
-                 : kind === "fall" ? -ascii.ch + (hy + ascii.ch) * p + out * (scene.height - hy) * 0.15
-                 : hy
-                width: ascii.cw; height: ascii.ch
-                horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: ascii.ch * 0.95
-                // decrypt: random glyphs until the cell settles
-                text: kind === "decrypt" && p < 1 && p > 0 ? ascii.noise[Math.floor((m.seed * 97 + ascii.t * 60)) % ascii.noise.length] : m.ch
-                opacity: (kind === "decrypt" || kind === "sweep" ? (p > 0 ? 1 : 0) : Math.min(1, p * 1.5)) * (1 - out)
-                // magenta marks characters still being swept in: the shader draws them in the text color
-                color: kind === "sweep" && p < 1 ? "#ff00ff" : "white"
-            }
         }
     }
 

@@ -7,6 +7,7 @@ radio (YouTube mix) so next/previous work. The widget shows/controls both throug
 
   music.py status                   JSON: what is installed / signed in / running, per source
   music.py login                    sign in to Spotify once (opens the browser)
+  music.py client-id <id>           use your own Spotify app (own request limit), then sign in again
   music.py start                    start the Spotify background player (if not running)
   music.py playlists                JSON: liked songs + your Spotify playlists
   music.py search <query>           JSON: Spotify tracks, playlists, albums, artists
@@ -17,6 +18,7 @@ radio (YouTube mix) so next/previous work. The widget shows/controls both throug
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -38,8 +40,22 @@ def binary():
     return shutil.which("spotify_player")
 
 
+CONFIG = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "spotify-player", "app.toml")
+
+
 def authenticated():
-    return bool(glob.glob(os.path.join(CACHE, "credentials*.json")) or glob.glob(os.path.join(CACHE, "**", "credentials*"), recursive=True))
+    """Both parts of the sign in: librespot's credentials (playback) and the Web API token (search, library)."""
+    return os.path.isfile(os.path.join(CACHE, "credentials.json")) and bool(glob.glob(os.path.join(CACHE, "*token*.json")))
+
+
+def rate_limited():
+    """True if Spotify answered "429 Too Many Requests" in the player's latest log during the last minute."""
+    logs = sorted(glob.glob(os.path.join(CACHE, "spotify-player-*.log")), key=os.path.getmtime)
+    if not logs or time.time() - os.path.getmtime(logs[-1]) > 60:
+        return False
+    with open(logs[-1], errors="replace") as f:
+        f.seek(max(0, os.path.getsize(logs[-1]) - 20000))
+        return "rate limit" in f.read()
 
 
 def running():
@@ -199,10 +215,46 @@ def play(kind, item_id):
     return {"ok": True}
 
 
+def stop():
+    subprocess.run(["pkill", "-x", "spotify_player"], capture_output=True)
+    for _ in range(20):
+        if not running():
+            break
+        time.sleep(0.2)
+
+
 def login():
+    """Sign in (runs in a terminal). spotify_player's "authenticate" saves only the Web API token; the playback
+    credentials are saved when the player itself connects, so start it afterwards and wait for them."""
     if not binary():
         raise SystemExit(tr("spotify-player is not installed (sudo pacman -S spotify-player)"))
-    os.execv(binary(), [binary(), "authenticate"])
+    stop()
+    if subprocess.run([binary(), "authenticate"]).returncode != 0:
+        raise SystemExit(tr("Spotify command failed"))
+    subprocess.Popen([binary(), "--daemon", "-o", f'device.name="{DEVICE}"', "-o", "device.volume=80"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                     start_new_session=True)
+    for _ in range(120):
+        if authenticated():
+            print(tr("Spotify is connected. You can close this window."))
+            return
+        time.sleep(1)
+    raise SystemExit(tr("Spotify did not answer in time"))
+
+
+def set_client_id(client_id):
+    """Use your own Spotify app instead of the shared one (its own request limit, and its name on the consent page)."""
+    client_id = client_id.strip()
+    if not re.fullmatch(r"[0-9a-f]{32}", client_id):
+        raise SystemExit(tr("That doesn't look like a Client ID (32 characters, 0-9 and a-f)."))
+    text = open(CONFIG).read() if os.path.isfile(CONFIG) else ""
+    line = f'client_id = "{client_id}"'
+    text = re.sub(r'(?m)^client_id\s*=.*$', line, text) if re.search(r"(?m)^client_id\s*=", text) else line + "\n" + text
+    os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+    open(CONFIG, "w").write(text)
+    for f in glob.glob(os.path.join(CACHE, "*token*.json")):   # the old app's token
+        os.remove(f)
+    login()
 
 
 def main():
@@ -215,6 +267,9 @@ def main():
             result = start()
         elif cmd == "login":
             login()
+            return
+        elif cmd == "client-id" and len(a) == 2:
+            set_client_id(a[1])
             return
         elif cmd == "playlists":
             result = {"items": playlists()}
@@ -235,7 +290,8 @@ def main():
         else:
             raise SystemExit(__doc__)
     except subprocess.TimeoutExpired:
-        result = {"error": tr("Spotify did not answer in time")}
+        result = {"error": tr("Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id") if rate_limited()
+                  else tr("Spotify did not answer in time")}
     except SystemExit as e:
         if cmd in ("status",) or str(e) == __doc__:
             raise

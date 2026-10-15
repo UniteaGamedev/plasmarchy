@@ -1,0 +1,55 @@
+#version 440
+// The animated ASCII logo, completely on the GPU. One mesh holds every cell of the logo: per cell 4 vertex
+// columns, the first two form the cell's quad, the other two collapse onto corners so the quads between cells
+// have no area. The vertex shader places each cell like the screensaver's effects (decrypt, scatter, fall,
+// sweep); the CPU only advances t.
+layout(location = 0) in vec4 qt_Vertex;
+layout(location = 1) in vec2 qt_MultiTexCoord0;
+layout(location = 0) out vec2 vUV;       // position inside the glyph slot
+layout(location = 1) out vec2 vCell;     // column, row
+layout(location = 2) out float vAlpha;
+layout(location = 3) out float vNoise;   // >= 0: show this noise glyph (decrypt)
+layout(location = 4) out float vText;    // 1: still being swept in, drawn in the text color
+
+#include "logo_block.glsl"
+#include "common.glsl"
+
+out gl_PerVertex { vec4 gl_Position; };
+
+float ease(float x) { x = clamp(x, 0.0, 1.0); return 1.0 - pow(1.0 - x, 3.0); }
+
+void main() {
+    float n = cols * rows;
+    float i = floor(qt_MultiTexCoord0.x * (4.0 * n - 1.0) + 0.5);
+    float k = floor(i / 4.0);
+    float side = mod(i, 4.0);
+    float bottom = qt_MultiTexCoord0.y;
+    if (side > 2.5) { k = min(k + 1.0, n - 1.0); side = 0.0; bottom = 0.0; }   // collapses onto the next cell
+    else if (side > 1.5) { side = 1.0; bottom = 0.0; }                          // collapses onto this cell
+
+    float c = mod(k, cols);
+    float r = floor(k / cols);
+    float seed = rnd(vec3(c, r, 1.0));
+    float delay = mode > 2.5 ? c / cols * 0.7 : mode > 1.5 ? c / cols * 0.55 + seed * 0.1 : seed * 0.6;
+    float p = t <= 1.0 ? ease((t - delay) / 0.4) : 1.0;
+    float o = t > 1.0 ? ease((t - 1.0 - seed * 0.5) / 0.5) : 0.0;
+
+    vec2 home = origin + vec2(c, r) * cellSize;
+    vec2 pos = home;
+    if (mode > 0.5 && mode < 1.5) {                                 // scatter: fly in from random places
+        vec2 from = vec2(rnd(vec3(c, r, 2.0)), rnd(vec3(c, r, 3.0))) * size;
+        pos = from + (home - from) * p;
+    } else if (mode > 1.5 && mode < 2.5) {                          // fall: drop in from above
+        pos.y = -cellSize.y + (home.y + cellSize.y) * p + o * (size.y - home.y) * 0.15;
+    }
+    bool fades = mode > 0.5 && mode < 2.5;
+    vAlpha = (fades ? min(1.0, p * 1.5) : (p > 0.0 ? 1.0 : 0.0)) * (1.0 - o);
+    vNoise = mode < 0.5 && p > 0.0 && p < 1.0 ? mod(floor(seed * 97.0 + t * 60.0), noiseCount) : -1.0;
+    vText = mode > 2.5 && p < 1.0 ? 1.0 : 0.0;
+    vCell = vec2(c, r);
+    vUV = vec2(side, bottom);
+
+    // the glyph slot is wider than the cell and centered on it
+    vec2 corner = pos + vec2((cellSize.x - slotWidth) * 0.5, 0.0) + vec2(side * slotWidth, bottom * cellSize.y);
+    gl_Position = qt_Matrix * vec4(corner, 0.0, 1.0);
+}
