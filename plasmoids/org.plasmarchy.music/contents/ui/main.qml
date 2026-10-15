@@ -19,7 +19,7 @@ PlasmoidItem {
     readonly property string mono: "JetBrainsMono Nerd Font"
     readonly property string bin: "\"$HOME/.local/bin/plasmarchy\""
     readonly property var player: mpris.currentPlayer
-    readonly property bool hasPlayer: !!player && (player.track !== "" || player.identity !== "")
+    readonly property bool hasPlayer: !!player && player.track !== ""   // an idle player (e.g. Spotify's daemon) doesn't count
     readonly property bool playing: !!player && player.playbackStatus === Mpris.PlaybackStatus.Playing
     readonly property string show: Plasmoid.configuration.show
     readonly property bool visibleInBar: show === "always" || (show === "auto" && hasPlayer)
@@ -32,8 +32,16 @@ PlasmoidItem {
     property var library: []            // liked songs + playlists
     property var results: null          // search results
     property string busy: ""
-    property string error: ""
+    property var errors: ({ spotify: "", youtube: "" })   // per source, so Spotify's errors don't show on YouTube
+    readonly property string error: errors[youtube ? "youtube" : "spotify"] || ""
+    function setError(src, text) { var e = Object.assign({}, errors); e[src] = text; errors = e }
 
+    // player names as people know them: our mpv plays YouTube Music, spotify_player is Spotify
+    function niceName(identity) {
+        if (identity === "mpv" && spotify.youtube && spotify.youtube.running) return "YouTube Music"
+        if (/spotify/i.test(identity)) return "Spotify"
+        return identity
+    }
     function fmt(us) {
         var s = Math.max(0, Math.floor(us / 1000000))
         return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
@@ -42,13 +50,25 @@ PlasmoidItem {
     readonly property bool youtube: Plasmoid.configuration.source === "youtube"
     property var ytResults: []
     function play(item) {
-        busy = item.name; error = ""
+        busy = item.name; setError(item.kind === "yt" ? "youtube" : "spotify", "")
         if (item.kind === "yt") run("yt-play " + item.id)
         else run("play " + item.kind + " " + (item.id || "-"))
     }
     function search(text) {
-        busy = "search"; error = ""
+        busy = "search"; setError(youtube ? "youtube" : "spotify", "")
         run((youtube ? "yt-search64 " : "search64 ") + Qt.btoa(text))
+    }
+
+    // source switch (Spotify / YouTube Music) next to the search field
+    component SourceButton: PC3.ToolButton {
+        required property string source
+        required property string label
+        checkable: true
+        checked: Plasmoid.configuration.source === source
+        display: PC3.AbstractButton.IconOnly
+        text: label
+        onClicked: { Plasmoid.configuration.source = source; checked = Qt.binding(() => Plasmoid.configuration.source === source) }
+        PC3.ToolTip { text: parent.label }
     }
 
     Mpris.Mpris2Model { id: mpris }
@@ -60,7 +80,8 @@ PlasmoidItem {
             disconnectSource(source)
             var out
             try { out = JSON.parse(data.stdout) } catch (e) { out = null }
-            if (out && out.error) root.error = out.error
+            if (out && out.error && source.indexOf(" music status") < 0)
+                root.setError(source.indexOf(" music yt-") >= 0 ? "youtube" : "spotify", out.error)
             if (source.indexOf(" music status") >= 0) { if (out) root.spotify = out }
             else if (source.indexOf(" music playlists") >= 0) { if (out && out.items) root.library = out.items; root.busy = "" }
             else if (source.indexOf(" music search64 ") >= 0) { if (out && !out.error) root.results = out; root.busy = "" }
@@ -68,11 +89,13 @@ PlasmoidItem {
             else if (source.indexOf(" music play ") >= 0 || source.indexOf(" music yt-play ") >= 0) { root.busy = ""; root.run("status") }
         }
     }
-    onExpandedChanged: if (root.expanded) {
-        run("status")
-        if (spotify.authenticated && library.length === 0) { busy = "library"; run("playlists") }
+    // the Spotify library is loaded only when Spotify is the chosen source
+    function loadLibrary() {
+        if (root.expanded && !youtube && spotify.authenticated && library.length === 0 && busy === "") { busy = "library"; run("playlists") }
     }
-    onSpotifyChanged: if (root.expanded && spotify.authenticated && library.length === 0 && busy === "") { busy = "library"; run("playlists") }
+    onExpandedChanged: if (root.expanded) { run("status"); loadLibrary() }
+    onSpotifyChanged: loadLibrary()
+    onYoutubeChanged: loadLibrary()
     Component.onCompleted: run("status")
 
     Timer {   // MPRIS only reports the position on request
@@ -84,7 +107,7 @@ PlasmoidItem {
     Plasmoid.status: visibleInBar ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.HiddenStatus
     preferredRepresentation: compactRepresentation
     toolTipMainText: hasPlayer ? title : i18n("Music")
-    toolTipSubText: hasPlayer ? [artist, player.identity].filter(x => x).join(" · ") : i18n("Nothing is playing")
+    toolTipSubText: hasPlayer ? [artist, niceName(player.identity)].filter(x => x).join(" · ") : i18n("Nothing is playing")
 
     // --- Top bar ---------------------------------------------------------------------------------
     compactRepresentation: MouseArea {
@@ -111,6 +134,7 @@ PlasmoidItem {
             anchors.centerIn: parent
             spacing: Kirigami.Units.smallSpacing
             // audio wave: bars bounce while music plays, a flat line otherwise
+            Timer { id: wave; property int step: 0; interval: 166; repeat: true; running: root.playing; onTriggered: step++ }
             Row {
                 spacing: 2
                 Layout.alignment: Qt.AlignVCenter
@@ -124,13 +148,9 @@ PlasmoidItem {
                         anchors.verticalCenter: parent.verticalCenter
                         color: root.playing ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
                         opacity: root.hasPlayer ? 0.9 : 0.4
-                        height: 3
-                        SequentialAnimation {
-                            running: root.playing; loops: Animation.Infinite
-                            onRunningChanged: if (!running) bar.height = 3
-                            NumberAnimation { target: bar; property: "height"; to: 7 + (bar.index * 5) % 9; duration: 260 + bar.index * 70; easing.type: Easing.InOutSine }
-                            NumberAnimation { target: bar; property: "height"; to: 3 + (bar.index * 3) % 5; duration: 300 + bar.index * 50; easing.type: Easing.InOutSine }
-                        }
+                        // a level meter that jumps 6 times a second: a smooth 60 fps animation would make
+                        // Plasma redraw the whole top bar all the time (that alone cost a third of a CPU core)
+                        height: root.playing ? 3 + Math.round(Math.abs(Math.sin(wave.step * (1.3 + index * 0.7) + index * 2)) * 10) : 3
                     }
                 }
             }
@@ -172,13 +192,14 @@ PlasmoidItem {
     // --- Popup ---------------------------------------------------------------------------------
     fullRepresentation: PlasmaExtras.Representation {
         Layout.preferredWidth: Kirigami.Units.gridUnit * 24    // same size as the system tray popups
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 24
+        Layout.preferredHeight: Kirigami.Units.gridUnit * 34   // room for the song list
         Layout.minimumWidth: Kirigami.Units.gridUnit * 18
-        Layout.minimumHeight: Kirigami.Units.gridUnit * 16
+        Layout.minimumHeight: Kirigami.Units.gridUnit * 20
         collapseMarginsHint: true
 
         header: PlasmaExtras.PlasmoidHeading {
-            visible: players.count > 2   // the model always contains the automatic "multiplexer" entry
+            // only when more than one player has something loaded (an idle Spotify daemon doesn't count)
+            visible: players.active > 1
             RowLayout {
                 anchors.fill: parent
                 PC3.TabBar {
@@ -186,14 +207,19 @@ PlasmoidItem {
                     currentIndex: Math.max(0, mpris.currentIndex - 1)
                     Repeater {
                         id: players
+                        property int active: 0
                         model: mpris
                         delegate: PC3.TabButton {
-                            required property string identity
+                            required property var container
                             required property bool isMultiplexer
                             required property int index
-                            visible: !isMultiplexer
-                            width: isMultiplexer ? 0 : implicitWidth
-                            text: identity
+                            readonly property bool shown: !isMultiplexer && !!container && container.track !== ""
+                            onShownChanged: players.active += shown ? 1 : -1
+                            Component.onCompleted: if (shown) players.active += 1
+                            Component.onDestruction: if (shown) players.active -= 1
+                            visible: shown
+                            width: shown ? implicitWidth : 0
+                            text: container ? root.niceName(container.identity) : ""
                             onClicked: mpris.currentIndex = index
                         }
                     }
@@ -211,7 +237,7 @@ PlasmoidItem {
                 visible: root.hasPlayer
                 spacing: Kirigami.Units.largeSpacing
                 Rectangle {
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 4.5
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 4
                     Layout.preferredHeight: Layout.preferredWidth
                     radius: Kirigami.Units.cornerRadius
                     color: Qt.alpha(Kirigami.Theme.highlightColor, 0.15)
@@ -239,7 +265,7 @@ PlasmoidItem {
                     Kirigami.Heading { Layout.fillWidth: true; level: 4; text: root.title; elide: Text.ElideRight }
                     PC3.Label { Layout.fillWidth: true; visible: text !== ""; text: root.artist; elide: Text.ElideRight
                                 color: Kirigami.Theme.highlightColor }
-                    PC3.Label { text: root.player ? root.player.identity : ""; opacity: 0.45; font: Kirigami.Theme.smallFont }
+                    PC3.Label { text: root.player ? root.niceName(root.player.identity) : ""; opacity: 0.45; font: Kirigami.Theme.smallFont }
                     RowLayout {
                         spacing: Kirigami.Units.smallSpacing
                         PC3.ToolButton { icon.name: "media-playlist-shuffle"; checkable: true
@@ -276,12 +302,22 @@ PlasmoidItem {
 
             Kirigami.Separator { Layout.fillWidth: true; visible: root.hasPlayer }
 
-            // --- Sources: Spotify / YouTube Music ---------------------------------------------------
-            PC3.TabBar {
+            // --- Source: Spotify / YouTube Music, two small icons next to the search ---------------------
+            RowLayout {
                 Layout.fillWidth: true
-                currentIndex: root.youtube ? 1 : 0
-                PC3.TabButton { text: "Spotify"; onClicked: Plasmoid.configuration.source = "spotify" }
-                PC3.TabButton { text: "YouTube Music"; onClicked: Plasmoid.configuration.source = "youtube" }
+                spacing: Kirigami.Units.smallSpacing
+                SourceButton { source: "spotify"; label: "Spotify"; icon.name: "spotify" }
+                SourceButton { source: "youtube"; label: "YouTube Music"; icon.name: "youtube-music" }
+                PlasmaExtras.SearchField {
+                    id: searchField
+                    Layout.fillWidth: true
+                    visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed)
+                                          : (root.spotify.installed && root.spotify.authenticated)
+                    placeholderText: root.youtube ? i18n("Search YouTube Music …") : i18n("Search Spotify …")
+                    onAccepted: if (text.trim()) root.search(text.trim())
+                    onTextChanged: if (text === "") { root.results = null; root.ytResults = [] }
+                }
+                Item { Layout.fillWidth: true; visible: !searchField.visible }
             }
 
             // not set up yet: what to do, the command to copy, a terminal, or set it up automatically
@@ -364,12 +400,6 @@ PlasmoidItem {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: Kirigami.Units.smallSpacing
-                PlasmaExtras.SearchField {
-                    Layout.fillWidth: true
-                    placeholderText: root.youtube ? i18n("Search YouTube Music …") : i18n("Search Spotify …")
-                    onAccepted: if (text.trim()) root.search(text.trim())
-                    onTextChanged: if (text === "") { root.results = null; root.ytResults = [] }
-                }
                 PC3.Label {
                     visible: root.error !== ""
                     text: root.error

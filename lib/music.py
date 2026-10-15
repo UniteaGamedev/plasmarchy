@@ -63,8 +63,9 @@ def running():
 
 
 def status():
-    return {"installed": bool(binary()), "authenticated": authenticated(), "running": running(),
-            "youtube": yt_status()}
+    yt = yt_status()
+    yt["running"] = subprocess.run(["pgrep", "-f", MPV_SOCKET], capture_output=True).returncode == 0   # our mpv
+    return {"installed": bool(binary()), "authenticated": authenticated(), "running": running(), "youtube": yt}
 
 
 # --- YouTube Music (yt-dlp + mpv) -------------------------------------------------------------------
@@ -78,8 +79,60 @@ def yt_status():
     return {"installed": not missing, "missing": missing}
 
 
+def ytm_api_search(query):
+    """Songs from YouTube Music's own search API (what music.youtube.com uses; about 0.5 s instead of 10+ s
+    with yt-dlp). Returns [] if the answer has an unexpected shape, then yt-dlp takes over."""
+    import urllib.request
+    body = json.dumps({"context": {"client": {"clientName": "WEB_REMIX", "clientVersion": "1.20241111.01.00",
+                                              "hl": "en"}},
+                       "query": query, "params": "EgWKAQIIAWoMEA4QChADEAQQCRAF"}).encode()   # filter: songs
+    req = urllib.request.Request("https://music.youtube.com/youtubei/v1/search?prettyPrint=false", data=body,
+                                 headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0",
+                                          "Origin": "https://music.youtube.com"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = json.load(r)
+
+    def walk(o):
+        if isinstance(o, dict):
+            if "musicResponsiveListItemRenderer" in o:
+                yield o["musicResponsiveListItemRenderer"]
+            else:
+                for v in o.values():
+                    yield from walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                yield from walk(v)
+
+    def runs(col):
+        return [r.get("text", "") for r in col.get("musicResponsiveListItemFlexColumnRenderer", {})
+                .get("text", {}).get("runs", [])]
+
+    items = []
+    for it in walk(data):
+        vid = (it.get("playlistItemData") or {}).get("videoId")
+        cols = it.get("flexColumns") or []
+        if not vid or not cols:
+            continue
+        title = "".join(runs(cols[0]))
+        info = [x.strip() for x in "".join(runs(cols[1]) if len(cols) > 1 else []).split("•") if x.strip()]
+        thumbs = (((it.get("thumbnail") or {}).get("musicThumbnailRenderer") or {}).get("thumbnail") or {}).get("thumbnails") or []
+        # info: artist, album, duration (the album is left out to keep the line short)
+        sub = " · ".join(x for x in (info[0] if info else "", info[-1] if len(info) > 1 else "") if x)
+        items.append({"kind": "yt", "id": vid, "name": title, "sub": sub,
+                      "image": thumbs[0]["url"] if thumbs else ""})
+        if len(items) >= 20:
+            break
+    return items
+
+
 def yt_search(query):
     import urllib.parse
+    try:
+        items = ytm_api_search(query)
+        if items:
+            return {"items": items}
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        pass
 
     def run(url):
         out = subprocess.run(["yt-dlp", "--flat-playlist", "--dump-single-json", "--no-warnings", url],
