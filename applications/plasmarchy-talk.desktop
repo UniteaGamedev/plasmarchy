@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=Talk to your computer
+Name[de]=Mit dem PC sprechen
+GenericName=AI conversation
+GenericName[de]=KI-Gespräch
+Comment=Start or end a conversation with the AI assistant
+Comment[de]=Gespräch mit dem KI-Assistenten starten oder beenden
+Keywords=talk;voice;assistant;ai;conversation;jarvis;
+Keywords[de]=sprechen;gespräch;assistent;ki;voice;talk;jarvis;
+Exec=@BIN@ talk
+Icon=audio-input-microphone
+Type=Application
+Categories=Utility;
+X-KDE-Shortcuts=Meta+Shift+Space

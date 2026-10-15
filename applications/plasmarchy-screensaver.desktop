@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Screensaver
+Name[de]=Bildschirmschoner
+GenericName=Plasmarchy Screensaver
+Comment=Start the Plasmarchy screensaver now
+Comment[de]=Plasmarchy-Bildschirmschoner jetzt starten
+Keywords=screensaver;plasmarchy;
+Keywords[de]=screensaver;bildschirmschoner;plasmarchy;
+Exec=@BIN@ screensaver
+Icon=preferences-desktop-screensaver
+Type=Application
+Categories=Settings;DesktopSettings;

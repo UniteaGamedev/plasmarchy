@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Switch theme
+Name[de]=Theme wechseln
+GenericName=Plasmarchy Themes
+Comment=Switch colors, wallpaper, icons and terminal with one click
+Comment[de]=Farben, Hintergrund, Symbole und Terminal mit einem Klick umschalten
+Keywords=theme;plasmarchy;omarchy;colors;design;wallpaper;
+Keywords[de]=theme;plasmarchy;omarchy;farben;design;hintergrund;wallpaper;
+Exec=@BIN@ pick
+Icon=preferences-desktop-theme-global
+Type=Application
+Categories=Settings;DesktopSettings;

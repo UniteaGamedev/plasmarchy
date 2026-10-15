@@ -1,0 +1,14 @@
+#!/bin/bash
+# Refresh open Dolphin windows after a theme switch:
+# - Folder previews (icon with content, e.g. Downloads) are rendered by KIO "thumbnail" workers. They keep
+#   running with the old icon set loaded -> stop them; Dolphin restarts them with the new one.
+# - Then reload the views (like F5) so icons and hover styling show the new theme.
+pkill -f 'kio/thumbnail\.so thumbnail' 2>/dev/null
+(
+    sleep 0.4
+    for svc in $(qdbus6 2>/dev/null | grep -o 'org\.kde\.dolphin-[0-9]*'); do
+        for win in $(qdbus6 "$svc" 2>/dev/null | grep -E '^/dolphin/Dolphin_[0-9]+$'); do
+            qdbus6 "$svc" "$win/actions/view_redisplay" org.qtproject.Qt.QAction.trigger >/dev/null 2>&1
+        done
+    done
+) >/dev/null 2>&1 &

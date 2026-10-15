@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Plasmarchy"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "AI assistant with voice and usage limits (Claude Code, Cursor, local models)",
+        "Description[de]": "KI-Assistent mit Sprache und Nutzungslimits (Claude Code, Cursor, lokale Modelle)",
+        "Icon": "application-x-executable",
+        "Id": "org.plasmarchy.aiusage",
+        "License": "MIT",
+        "Name": "AI Assistant",
+        "Name[de]": "KI-Assistent",
+        "Version": "2.1"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

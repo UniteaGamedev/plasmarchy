@@ -1,0 +1,1 @@
+Omarchy themes taken from github.com/basecamp/omarchy @ 246f33a (2026-10-15), MIT license

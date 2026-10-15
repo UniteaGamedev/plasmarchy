@@ -1,0 +1,374 @@
+#!/bin/bash
+# Plasmarchy - an Omarchy-like look for KDE Plasma.
+#
+#   plasmarchy                      open the theme picker
+#   plasmarchy theme <name>         apply a theme (e.g. osaka-jade)
+#   plasmarchy themes               list available themes
+#   plasmarchy next-bg              next wallpaper of the active theme
+#   plasmarchy studio               Theme Studio: create, edit and delete your own themes
+#   plasmarchy restore              go back to the look from before Plasmarchy
+#   plasmarchy screensaver          start the screensaver now
+#   plasmarchy layout               set up the top bar + dock again
+#   plasmarchy ai-usage [--json]    AI usage and limits (Claude Code, Cursor)
+#   plasmarchy ask "<question>"     ask the AI assistant (connected AI, e.g. Claude Code)
+#   plasmarchy voice setup          set up voice (local speech recognition + text-to-speech)
+#   plasmarchy talk                 start/stop a conversation (default hotkey Meta+Shift+Space)
+#   plasmarchy settings             assistant settings (get | set KEY VALUE)
+#   plasmarchy llm setup            set up a local language model (Ollama; fallback and offline AI)
+#   plasmarchy app <name>           launch an app by name (also used by the assistant)
+#   plasmarchy volume <0-100|mute>  set the volume
+#   plasmarchy version
+set -euo pipefail
+
+VERSION="1.0.0"
+BASE="${XDG_DATA_HOME:-$HOME/.local/share}/plasmarchy"
+LIB="$BASE/lib"
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/plasmarchy"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/plasmarchy"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/plasmarchy"
+STATE="$STATE_DIR/current"          # line 1: theme, line 2: wallpaper index
+BACKUP="$STATE_DIR/backup/look.env"
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+QML=/usr/lib/qt6/bin/qml
+
+die() { echo "plasmarchy: $*" >&2; exit 1; }
+py() { python3 -I "$LIB/$1" "${@:2}"; }
+t() { python3 -I "$LIB/i18n.py" tr "$@"; }   # translate a message: t "Text {0}" arg
+themectl() { py themectl.py "$@"; }
+
+scheme_id() { echo "Plasmarchy$(echo "$1" | sed -E 's/(^|-)([a-z])/\U\2/g')"; }
+current_theme() { [ -f "$STATE" ] && head -1 "$STATE" || true; }
+
+current_wallpaper() {
+    qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
+        'var d=desktops()[0]; d.currentConfigGroup=["Wallpaper","org.kde.image","General"]; print(d.readConfig("Image"))'
+}
+
+# --- Backup of the look before Plasmarchy -----------------------------------------------------
+backup_once() {
+    [ -f "$BACKUP" ] && return
+    mkdir -p "$(dirname "$BACKUP")"
+    {
+        printf 'COLORSCHEME=%q\n' "$(kreadconfig6 --file kdeglobals --group General --key ColorScheme)"
+        printf 'ACCENT=%q\n' "$(kreadconfig6 --file kdeglobals --group General --key AccentColor)"
+        printf 'PLASMATHEME=%q\n' "$(kreadconfig6 --file plasmarc --group Theme --key name)"
+        printf 'DECO_LIB=%q\n' "$(kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key library)"
+        printf 'DECO_THEME=%q\n' "$(kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key theme)"
+        printf 'WALLPAPER=%q\n' "$(current_wallpaper)"
+        printf 'LOCKSCREEN=%q\n' "$(kreadconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key Image)"
+        printf 'ICONS=%q\n' "$(kreadconfig6 --file kdeglobals --group Icons --key Theme)"
+        printf 'KONSOLE_PROFILE=%q\n' "$(kreadconfig6 --file konsolerc --group 'Desktop Entry' --key DefaultProfile)"
+    } > "$BACKUP"
+}
+
+# --- Parts of a theme --------------------------------------------------------------------------
+set_decoration() {   # $1 library, $2 theme
+    kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key library "$1"
+    kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key theme "$2"
+    qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+}
+
+screen_size() {      # resolution of the main screen, e.g. 2560x1600 (cached; delete the file to re-detect)
+    local f="$CACHE_DIR/screen-size"
+    [ -s "$f" ] && { cat "$f"; return; }
+    mkdir -p "$CACHE_DIR"
+    kscreen-doctor -o 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -o '[0-9]*x[0-9]*@[0-9.]*\*' | head -1 | cut -d@ -f1 | tee "$f"
+}
+
+cached_wallpaper() { # cache images scaled to the screen size (some originals are 8K -> faster)
+    local src="$1" size out
+    size="$(screen_size)"; [ -n "$size" ] || { echo "$src"; return; }
+    out="$CACHE_DIR/wallpapers/$size/$(printf '%s' "$src" | sha1sum | cut -c1-16).jpg"
+    if [ ! -f "$out" ] || [ "$src" -nt "$out" ]; then
+        mkdir -p "$(dirname "$out")"
+        magick "$src" -resize "${size}^" -quality 90 "$out" 2>/dev/null || { echo "$src"; return; }
+    fi
+    echo "$out"
+}
+
+set_wallpaper() {    # $1 image file or file:// URL
+    local img="${1#file://}"
+    [ -n "$img" ] || return 0
+    [ -f "$img" ] && img="$(cached_wallpaper "$img")"
+    # Set in the background: colors/icons switch immediately, the image fades in shortly after
+    (plasma-apply-wallpaperimage "$img" >/dev/null 2>&1 &)
+    kwriteconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image \
+        --group General --key Image "file://$img"
+}
+
+set_konsole() {      # $1 Konsole color scheme
+    mkdir -p "$HOME/.local/share/konsole"
+    cat > "$HOME/.local/share/konsole/Plasmarchy.profile" <<EOF
+[Appearance]
+ColorScheme=$1
+Font=JetBrainsMono Nerd Font,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+
+[General]
+Name=Plasmarchy
+Parent=FALLBACK/
+EOF
+    kwriteconfig6 --file konsolerc --group 'Desktop Entry' --key DefaultProfile Plasmarchy.profile
+}
+
+set_icons() {        # $1 theme: Papirus light/dark + prebuilt overlay with the folder color
+    local mode folder icons
+    mode="$(themectl info "$1" | sed -n 's/^mode=//p')"
+    folder="$(themectl info "$1" | sed -n 's/^folder=//p')"
+    icons=Papirus-Dark; [ "$mode" = light ] && icons=Papirus-Light
+    if [ -n "$folder" ]; then
+        [ -d "$HOME/.local/share/icons/$icons-$folder" ] || py folder_overlays.py "$folder" >/dev/null
+        icons="$icons-$folder"
+    fi
+    /usr/lib/plasma-changeicons "$icons" >/dev/null 2>&1 || true
+}
+
+run_hooks() {        # scripts in hooks.d get the theme as argument
+    local h
+    for h in "$BASE"/hooks.d/* "$CONF_DIR"/hooks.d/*; do
+        [ -x "$h" ] && "$h" "$1" || true
+    done
+}
+
+apply_theme() {      # $1 theme, $2 wallpaper index (optional)
+    local slug="$1" idx="${2:-0}" sid
+    themectl path "$slug" >/dev/null || exit 1
+    backup_once
+    sid="$(scheme_id "$slug")"
+    py gen.py "$slug" >/dev/null     # always regenerate: user themes may have changed
+
+    kwriteconfig6 --file kdeglobals --group General --key AccentColor --delete
+    # One after the other, not in parallel: both write kdeglobals and notify running apps.
+    # Color scheme last, so apps already have the new icons when they repaint.
+    set_icons "$slug"
+    if [ "$(kreadconfig6 --file kdeglobals --group General --key ColorScheme)" = "$sid" ]; then
+        plasma-apply-colorscheme BreezeDark >/dev/null   # reload the same scheme (e.g. after editing)
+    fi
+    plasma-apply-colorscheme "$sid" >/dev/null
+    # Plasma style "Plasmarchy" (Breeze + popups with accent border) or Breeze; both follow the color scheme
+    local style=default
+    [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/plasma/desktoptheme/plasmarchy/metadata.json" ] && style=plasmarchy
+    [ "$(kreadconfig6 --file plasmarc --group Theme --key name)" = "$style" ] || plasma-apply-desktoptheme "$style" >/dev/null
+    set_decoration org.kde.breeze Breeze
+    set_konsole "$sid"
+
+    mapfile -t bgs < <(themectl backgrounds "$slug")
+    if [ "${#bgs[@]}" -gt 0 ] && [ -n "${bgs[0]}" ]; then
+        idx=$(( idx % ${#bgs[@]} ))
+        set_wallpaper "${bgs[$idx]}"
+    fi
+    mkdir -p "$STATE_DIR"
+    printf '%s\n%s\n' "$slug" "$idx" > "$STATE"
+    run_hooks "$slug"
+    echo "Theme: $slug"
+}
+
+restore() {
+    [ -f "$BACKUP" ] || die "$(t "No backup yet - no theme has been applied.")"
+    # shellcheck disable=SC1090
+    source "$BACKUP"
+    [ -n "$COLORSCHEME" ] && plasma-apply-colorscheme "$COLORSCHEME" >/dev/null
+    if [ -n "$ACCENT" ]; then
+        plasma-apply-colorscheme --accent-color "$ACCENT" >/dev/null
+    else
+        kwriteconfig6 --file kdeglobals --group General --key AccentColor --delete
+    fi
+    [ -n "$PLASMATHEME" ] && plasma-apply-desktoptheme "$PLASMATHEME" >/dev/null
+    [ -n "$DECO_LIB" ] && set_decoration "$DECO_LIB" "$DECO_THEME"
+    set_wallpaper "$WALLPAPER"
+    [ -n "${ICONS:-}" ] && /usr/lib/plasma-changeicons "$ICONS" >/dev/null 2>&1
+    [ -n "$LOCKSCREEN" ] && kwriteconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper \
+        --group org.kde.image --group General --key Image "$LOCKSCREEN"
+    if [ -n "$KONSOLE_PROFILE" ]; then
+        kwriteconfig6 --file konsolerc --group 'Desktop Entry' --key DefaultProfile "$KONSOLE_PROFILE"
+    else
+        kwriteconfig6 --file konsolerc --group 'Desktop Entry' --key DefaultProfile --delete
+    fi
+    rm -f "$STATE"
+    run_hooks ""
+    t "Previous look restored."
+}
+
+# --- User interfaces (QML) ---------------------------------------------------------------------
+qml_run() {          # without a terminal, Qt would log console.log to the journal instead of stderr
+    QT_FORCE_STDERR_LOGGING=1 QML_XHR_ALLOW_FILE_READ=1 "$QML" "$@" 2>&1
+}
+
+write_manifest() { py manifest.py "$RUN/plasmarchy-themes.json" "$(current_theme)"; }
+
+pick() {
+    write_manifest
+    local choice
+    choice="$(qml_run "$LIB/picker.qml" -- "$RUN/plasmarchy-themes.json" | sed -n 's/^.*PLASMARCHY_CHOICE=//p' | tail -1)"
+    case "$choice" in
+        "")        ;;
+        __restore) restore ;;
+        __nextbg)  next_bg ;;
+        __studio)  studio ;;
+        *)         apply_theme "$choice" ;;
+    esac
+}
+
+next_bg() {
+    [ -f "$STATE" ] || die "$(t "No Plasmarchy theme active.")"
+    local slug idx
+    { read -r slug; read -r idx; } < "$STATE"
+    apply_theme "$slug" $(( idx + 1 ))
+}
+
+studio() {           # Theme Studio: QML reports actions line by line; we run them and report back
+    write_manifest
+    local status="$RUN/plasmarchy-studio-status.json"
+    echo '{"seq":0,"ok":true,"verb":"","message":""}' > "$status"
+    local seq=0
+    qml_run "$LIB/studio.qml" -- "$RUN/plasmarchy-themes.json" "$status" | while IFS= read -r line; do
+        case "$line" in *PLASMARCHY_ACTION=*) ;; *) continue ;; esac
+        local action="${line#*PLASMARCHY_ACTION=}" verb arg result ok=true msg=""
+        verb="${action%% *}"; arg="${action#* }"
+        case "$verb" in
+            save)   printf '%s' "$arg" | base64 -d > "$RUN/plasmarchy-studio-save.json"
+                    slug="$(printf '%s' "$arg" | base64 -d | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("slug",""))')"
+                    if result="$(themectl save "${slug:-new}" "$RUN/plasmarchy-studio-save.json" 2>&1)"; then
+                        msg="$(t "Saved: {0}" "$result")"
+                        [ "$(current_theme)" = "$slug" ] && apply_theme "$result" >/dev/null
+                    else ok=false; msg="$result"; fi ;;
+            new)    template="$(current_theme)"; [ -n "$template" ] || template=osaka-jade
+                    if result="$(themectl new "$arg" "$template" 2>&1)"; then msg="$(t "Created: {0}" "$result")"
+                    else ok=false; msg="$result"; fi ;;
+            delete) if result="$(themectl delete "$arg" 2>&1)"; then msg="$(t "Deleted: {0}" "$result")"
+                    else ok=false; msg="$result"; fi ;;
+            apply)  apply_theme "$arg" >/dev/null && msg="$(t "Applied: {0}" "$arg")" || { ok=false; msg="$(t "Applying the theme failed")"; } ;;
+            *)      continue ;;
+        esac
+        write_manifest
+        seq=$((seq + 1))
+        python3 -I -c 'import json,sys; json.dump({"seq":int(sys.argv[1]),"ok":sys.argv[2]=="true","message":sys.argv[3],"slug":sys.argv[4],"verb":sys.argv[6]}, open(sys.argv[5],"w"))' \
+            "$seq" "$ok" "$msg" "${result:-}" "$status" "$verb"
+    done
+}
+
+screensaver() {
+    local conf="$CONF_DIR/screensaver.conf" TEXT="CachyOS" EFFECT_SECONDS=14
+    # shellcheck disable=SC1090
+    [ -f "$conf" ] && source "$conf"
+    if [ "${1:-}" = "--idle" ]; then   # automatic: not while an app inhibits (video, game, call)
+        [ "$(qdbus6 org.freedesktop.PowerManagement.Inhibit /org/freedesktop/PowerManagement/Inhibit \
+              org.freedesktop.PowerManagement.Inhibit.HasInhibit 2>/dev/null)" = "true" ] && return 0
+    fi
+    exec 9>"$RUN/plasmarchy-screensaver.lock"
+    flock -n 9 || return 0
+    local theme colors="$RUN/plasmarchy-screensaver-colors.json"
+    theme="$(current_theme)"; [ -n "$theme" ] || theme=osaka-jade
+    python3 -I - "$(themectl path "$theme")/colors.toml" "$colors" <<'PY'
+import json, sys, tomllib
+c = tomllib.load(open(sys.argv[1], "rb"))
+pal = [c[k] for k in ("accent", "cyan", "blue", "magenta", "green", "bright_cyan", "bright_blue") if k in c]
+json.dump({"background": c["background"], "foreground": c["foreground"], "muted": c["muted"],
+           "accent": c["accent"], "palette": pal}, open(sys.argv[2], "w"))
+PY
+    QML_XHR_ALLOW_FILE_READ=1 "$QML" "$LIB/screensaver.qml" -- "$colors" "$TEXT" "$EFFECT_SECONDS" >/dev/null 2>&1
+}
+
+app() {             # launch an app by (partial) name - for the assistant's voice commands
+    local q="${*,,}" best
+    [ -n "$q" ] || die "$(t "App name missing")"
+    best="$(python3 -I - "$q" <<'PY'
+import configparser, glob, os, sys
+q = sys.argv[1]
+dirs = [os.path.expanduser("~/.local/share/applications"), "/usr/share/applications",
+        "/var/lib/flatpak/exports/share/applications", os.path.expanduser("~/.local/share/flatpak/exports/share/applications")]
+best = ((0, 0), "")
+for d in dirs:
+    for f in glob.glob(os.path.join(d, "**", "*.desktop"), recursive=True):
+        c = configparser.ConfigParser(interpolation=None, strict=False)
+        try:
+            c.read(f, encoding="utf-8")
+            e = c["Desktop Entry"]
+        except Exception:
+            continue
+        if e.get("NoDisplay", "false") == "true" or e.get("Type") != "Application":
+            continue
+        names = [e.get("Name", ""), e.get("GenericName", ""), os.path.basename(f)[:-8]] + \
+                [v for k, v in e.items() if k.startswith("name[")] + e.get("Keywords", "").split(";")
+        names = [n.lower() for n in names if n]
+        def rank(n):   # exact > prefix > whole word > substring; on a tie, the shorter name
+            words = n.replace("-", " ").split()
+            s = 4 if n == q else 3 if n.startswith(q) else 2 if q in words else 1 if q in n else 0
+            return (s, -len(n))
+        score = max((rank(n) for n in names), default=(0, 0))
+        if score[0] and score > best[0]:
+            best = (score, f)
+print(best[1] if best[0][0] else "")
+PY
+)"
+    [ -n "$best" ] || die "$(t "No app found: {0}" "$*")"
+    (kioclient exec "$best" >/dev/null 2>&1 || gtk-launch "$(basename "$best" .desktop)" >/dev/null 2>&1) &
+    t "Started: {0}" "$(sed -n 's/^Name=//p' "$best" | head -1)"
+}
+
+volume() {
+    case "${1:-}" in
+        mute)   pactl set-sink-mute @DEFAULT_SINK@ 1 ;;
+        unmute) pactl set-sink-mute @DEFAULT_SINK@ 0 ;;
+        [0-9]*) pactl set-sink-mute @DEFAULT_SINK@ 0; pactl set-sink-volume @DEFAULT_SINK@ "$(( ${1%\%} > 150 ? 150 : ${1%\%} ))%" ;;
+        *)      pactl get-sink-volume @DEFAULT_SINK@ | head -1; return ;;
+    esac
+    t "Volume: {0}" "$1"
+}
+
+llm_setup() {        # Ollama (package ollama-cuda / ollama) + model from assistant.conf
+    local model
+    model="$(sed -n 's/^LOCAL_MODEL=//p' "$CONF_DIR/assistant.conf" 2>/dev/null | tr -d '"')"; model="${model:-qwen3:4b}"
+    if ! command -v ollama >/dev/null; then
+        local pkg=ollama
+        command -v nvidia-smi >/dev/null && pkg=ollama-cuda
+        t "Installing {0} (needs sudo) …" "$pkg"
+        sudo pacman -S --needed "$pkg" || die "$(t "Ollama could not be installed")"
+    fi
+    systemctl is-active --quiet ollama || sudo systemctl enable --now ollama
+    for _ in $(seq 20); do curl -fs http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 0.5; done
+    t "Downloading model {0} …" "$model"
+    ollama pull "$model"
+    t "Local model ready: {0}" "$model"
+}
+
+idle() {             # service: screensaver after TIMEOUT_MIN minutes idle (swayidle)
+    local conf="$CONF_DIR/screensaver.conf" TIMEOUT_MIN=5
+    # shellcheck disable=SC1090
+    [ -f "$conf" ] && source "$conf"
+    if ! command -v swayidle >/dev/null; then   # idle quietly instead of a restart loop
+        echo "plasmarchy: swayidle missing (sudo pacman -S swayidle) - automatic screensaver inactive" >&2
+        exec sleep infinity
+    fi
+    [ "${TIMEOUT_MIN:-0}" -gt 0 ] || exec sleep infinity
+    exec swayidle -w timeout $(( TIMEOUT_MIN * 60 )) "$0 screensaver --idle"
+}
+
+case "${1:-pick}" in
+    pick)           pick ;;
+    theme|set)      apply_theme "${2:?theme name missing (see: plasmarchy themes)}" ;;
+    themes|list)    themectl list ;;
+    next-bg)        next_bg ;;
+    studio)         studio ;;
+    restore)        restore ;;
+    screensaver)    screensaver "${2:-}" ;;
+    idle)           idle ;;
+    layout)         py layout.py ;;
+    ai-usage)       py ai_usage.py "${@:2}" ;;
+    ask)            if [ "${2:-}" = "--b64" ] || [ "${2:-}" = "--new" ] || [ "${2:-}" = "--provider" ]; then
+                        py assistant.py ask "${@:2}"          # from the widget: text is base64-encoded
+                    else
+                        py assistant.py ask "$(printf '%s' "${*:2}" | base64 -w0)" | python3 -I -c \
+                            'import json,sys; d=json.load(sys.stdin); print(d.get("answer") or d.get("error"))'
+                    fi ;;
+    providers)      py assistant.py providers ;;
+    assistant)      py assistant.py "${@:2}" ;;
+    voice)          py voice.py "${@:2}" ;;
+    talk)           py talk.py ;;
+    settings)       py settings.py "${@:2}" ;;
+    llm)            [ "${2:-}" = setup ] && llm_setup || die "usage: plasmarchy llm setup" ;;
+    app)            app "${@:2}" ;;
+    volume)         volume "${2:-}" ;;
+    version|-v)     echo "plasmarchy $VERSION" ;;
+    help|-h|--help) sed -n '2,/^[^#]/p' "$0" | grep '^#' | sed 's/^# \{0,1\}//' ;;
+    *)              die "$(t "Unknown command '{0}' (see: plasmarchy help)" "$1")" ;;
+esac

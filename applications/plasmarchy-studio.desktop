@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Theme Studio
+GenericName=Plasmarchy Theme Studio
+Comment=Create, edit and delete your own themes
+Comment[de]=Eigene Themes anlegen, bearbeiten und löschen
+Keywords=theme;plasmarchy;editor;colors;studio;
+Keywords[de]=theme;plasmarchy;editor;farben;studio;
+Exec=@BIN@ studio
+Icon=preferences-desktop-color
+Type=Application
+Categories=Settings;DesktopSettings;
