@@ -193,20 +193,72 @@ def yt_now():
     return {"id": vid, "image": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg" if vid else ""}
 
 
+def ytm_radio(video_id):
+    """The song plus YouTube Music's radio queue ("Up next", about 25 similar songs) as [(id, title)]."""
+    import urllib.request
+    body = json.dumps({"context": {"client": {"clientName": "WEB_REMIX", "clientVersion": "1.20241111.01.00",
+                                              "hl": "en"}},
+                       "videoId": video_id, "playlistId": "RDAMVM" + video_id, "isAudioOnly": True}).encode()
+    req = urllib.request.Request("https://music.youtube.com/youtubei/v1/next?prettyPrint=false", data=body,
+                                 headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0",
+                                          "Origin": "https://music.youtube.com"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = json.load(r)
+
+    def walk(o):
+        if isinstance(o, dict):
+            if "playlistPanelVideoRenderer" in o:
+                yield o["playlistPanelVideoRenderer"]
+            else:
+                for v in o.values():
+                    yield from walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                yield from walk(v)
+    out, seen = [], set()
+    for it in walk(data):
+        vid = it.get("videoId")
+        if vid and vid not in seen:
+            seen.add(vid)
+            out.append((vid, "".join(r.get("text", "") for r in (it.get("title") or {}).get("runs", []))))
+    return out
+
+
 def yt_play(target):
+    """Play a song as a radio (it and similar songs after it) or a YouTube / YouTube Music link as it is."""
     if not yt_status()["installed"]:
         raise SystemExit(tr("YouTube Music isn't set up yet: {0}", "plasmarchy music setup youtube"))
-    # a song id starts as a radio (YouTube mix), links are played as they are
-    url = target if "://" in target else f"https://music.youtube.com/watch?v={target}&list=RDAMVM{target}"
+    if "://" in target:
+        queue = [(target, "")]
+    else:
+        try:
+            queue = [("https://music.youtube.com/watch?v=" + vid, title) for vid, title in ytm_radio(target)]
+        except (OSError, ValueError):
+            queue = []
+        if not queue or target not in queue[0][0]:
+            queue.insert(0, ("https://music.youtube.com/watch?v=" + target, ""))
     try:
-        mpv_command("loadfile", url, "replace")
-    except OSError:   # no player running yet
+        mpv_command("get_property", "pid")
+    except OSError:   # no player running yet: start an empty one, then fill it
         args = ["mpv", "--no-video", "--idle=yes", "--force-window=no", "--no-terminal",
                 f"--input-ipc-server={MPV_SOCKET}", "--ytdl-format=bestaudio/best", "--title=YouTube Music"]
         plugin = mpris_plugin()
         if plugin and not plugin.startswith("/etc/mpv/scripts") and "/.config/mpv/scripts" not in plugin:
             args.append(f"--script={plugin}")   # not in an auto-loaded scripts folder
-        spawn(args + [url], "mpv")
+        spawn(args, "mpv")
+        for _ in range(50):
+            time.sleep(0.1)
+            try:
+                mpv_command("get_property", "pid")
+                break
+            except OSError:
+                continue
+    # the title as display name right away: otherwise the link shows until the stream is open
+    for n, (url, title) in enumerate(queue):
+        opts = f"force-media-title=%{len(title.encode())}%{title}" if title else ""   # %n% quoting: commas are fine
+        mpv_command("loadfile", url, "replace" if n == 0 else "append", -1, opts)
+    mpv_command("set_property", "pause", False)
+    mpv_command("set_property", "mute", False)   # starting a song always means: with sound
     return {"ok": True}
 
 
@@ -284,8 +336,20 @@ def search(query):
     return out
 
 
+def latest_log():
+    logs = sorted(glob.glob(os.path.join(CACHE, "spotify-player-*.log")), key=os.path.getmtime)
+    return logs[-1] if logs else ""
+
+
+def rate_limit_msg():
+    return tr("Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id")
+
+
 def play(kind, item_id):
     start()
+    # spotify_player answers "ok" even when Spotify refuses to start playback: watch its log for that
+    log = latest_log()
+    offset = os.path.getsize(log) if log else 0
     if kind == "liked":
         sp(["playback", "start", "liked"])
     elif kind == "track":
@@ -294,6 +358,15 @@ def play(kind, item_id):
         sp(["playback", "start", "context", "--id", item_id, kind])
     else:
         raise SystemExit(tr("Unknown item: {0}", kind))
+    time.sleep(1.5)
+    if log and os.path.isfile(log):
+        with open(log, errors="replace") as f:
+            f.seek(offset)
+            new = f.read()
+        if "429 Too Many Requests" in new or "rate limit" in new:
+            raise SystemExit(rate_limit_msg())
+        if "Failed to handle a player request" in new:
+            raise SystemExit(tr("Spotify command failed"))
     return {"ok": True}
 
 
@@ -385,7 +458,7 @@ def main():
         else:
             raise SystemExit(__doc__)
     except subprocess.TimeoutExpired:
-        result = {"error": tr("Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id") if rate_limited()
+        result = {"error": rate_limit_msg() if rate_limited()
                   else tr("Spotify did not answer in time")}
     except SystemExit as e:
         if cmd in ("status",) or str(e) == __doc__:

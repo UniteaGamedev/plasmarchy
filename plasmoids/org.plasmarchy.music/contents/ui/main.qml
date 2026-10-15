@@ -65,8 +65,10 @@ PlasmoidItem {
     readonly property bool playing: !!player && player.playbackStatus === Mpris.PlaybackStatus.Playing
     readonly property string show: Plasmoid.configuration.show
     readonly property bool visibleInBar: show === "always" || (show === "auto" && hasPlayer)
-    readonly property string title: !player ? "" : player.track || player.identity
-    readonly property string artist: !player ? "" : (player.artist || "")
+    // while mpv opens a stream it reports the link as title for a moment: show "Loading …" instead
+    readonly property bool loading: !!player && /^(https?|ytdl):|watch\?v=/.test(player.track)
+    readonly property string title: !player ? "" : loading ? i18n("Loading …") : player.track || player.identity
+    readonly property string artist: !player || loading ? "" : (player.artist || "")
     readonly property string line: artist && title ? artist + " · " + title : title
 
     // Spotify (spotify_player)
@@ -136,14 +138,14 @@ PlasmoidItem {
     function loadLibrary() {
         if (root.expanded && !youtube && spotify.authenticated && library.length === 0 && busy === "") { busy = "library"; run("playlists") }
     }
-    onExpandedChanged: if (root.expanded) { run("status"); loadLibrary() }
+    onExpandedChanged: if (root.expanded) { if (player) player.updatePosition(); run("status"); loadLibrary() }
     onSpotifyChanged: loadLibrary()
     onYoutubeChanged: loadLibrary()
     Component.onCompleted: run("status")
 
     Timer {   // MPRIS only reports the position on request
         interval: 1000; repeat: true
-        running: root.expanded && root.playing
+        running: root.playing   // also while closed: the bar is at the right place the moment the popup opens
         onTriggered: root.player.updatePosition()
     }
 
@@ -153,10 +155,41 @@ PlasmoidItem {
     toolTipSubText: hasPlayer ? [artist, niceName(player.identity)].filter(x => x).join(" · ") : i18n("Nothing is playing")
 
     // --- Top bar ---------------------------------------------------------------------------------
+    // a control in the top bar: a real button with a hover background, sized for the bar
+    component BarButton: MouseArea {
+        id: barButton
+        property int glyph
+        property bool ok: true
+        signal activated()
+        implicitWidth: Kirigami.Units.gridUnit * 1.6
+        implicitHeight: implicitWidth
+        Layout.alignment: Qt.AlignVCenter
+        hoverEnabled: true
+        enabled: ok
+        onClicked: activated()
+        Rectangle {
+            anchors.fill: parent
+            radius: Kirigami.Units.cornerRadius
+            color: Kirigami.Theme.highlightColor
+            opacity: barButton.containsMouse ? 0.2 : 0
+        }
+        PC3.Label {
+            anchors.centerIn: parent
+            text: String.fromCodePoint(barButton.glyph)
+            font.family: root.mono
+            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize * 1.25
+            opacity: !barButton.ok ? 0.3 : barButton.containsMouse ? 1 : 0.85
+            color: barButton.containsMouse ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
+        }
+    }
+
     compactRepresentation: MouseArea {
         id: compact
-        readonly property real textWidth: Plasmoid.configuration.showTitle && root.hasPlayer
+        readonly property real textWidth: Plasmoid.configuration.showTitle
             ? Math.min(label.implicitWidth, Kirigami.Units.gridUnit * Plasmoid.configuration.maxTitleWidth) : 0
+        // a new title glides to its width instead of making the top bar jump
+        property real shownWidth: textWidth
+        Behavior on shownWidth { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
         visible: root.visibleInBar
         Layout.minimumWidth: visible ? row.implicitWidth + Kirigami.Units.smallSpacing * 2 : 0
         Layout.preferredWidth: Layout.minimumWidth
@@ -185,7 +218,6 @@ PlasmoidItem {
                 Repeater {
                     model: 4
                     delegate: Rectangle {
-                        id: bar
                         required property int index
                         width: 2; radius: 1
                         anchors.verticalCenter: parent.verticalCenter
@@ -200,43 +232,32 @@ PlasmoidItem {
             PC3.Label {
                 id: label
                 visible: compact.textWidth > 0
-                Layout.preferredWidth: compact.textWidth
-                text: root.line
+                Layout.preferredWidth: compact.shownWidth
+                // same visible gap on both sides: the buttons on the right have their own padding
+                Layout.leftMargin: Kirigami.Units.smallSpacing + (Kirigami.Units.gridUnit * 1.6 - Kirigami.Theme.defaultFont.pixelSize * 1.25) / 2
+                // without music: a quiet placeholder, so the player keeps its place
+                text: root.hasPlayer ? root.line : i18n("Nothing is playing")
                 elide: Text.ElideRight
                 font.family: root.mono
                 font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                opacity: root.playing ? 0.95 : 0.6
+                opacity: root.playing ? 0.95 : 0.5
             }
-            Repeater {   // previous / play-pause / next
-                model: root.hasPlayer ? [
-                    { glyph: 0xF04AE, act: "prev", ok: root.player.canGoPrevious },
-                    { glyph: root.playing ? 0xF03E4 : 0xF040A, act: "toggle", ok: true },
-                    { glyph: 0xF04AD, act: "next", ok: root.player.canGoNext }] : []
-                delegate: PC3.Label {
-                    required property var modelData
-                    text: String.fromCodePoint(modelData.glyph)
-                    font.family: root.mono
-                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize * 1.15
-                    opacity: !modelData.ok ? 0.25 : ctl.containsMouse ? 1 : 0.7
-                    color: ctl.containsMouse ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
-                    MouseArea {
-                        id: ctl
-                        anchors.fill: parent; anchors.margins: -3
-                        hoverEnabled: true
-                        enabled: modelData.ok
-                        onClicked: modelData.act === "prev" ? root.player.Previous()
-                                 : modelData.act === "next" ? root.player.Next() : root.player.PlayPause()
-                    }
-                }
+            RowLayout {   // previous / play-pause / next
+                spacing: 0
+                BarButton { glyph: 0xF04AE; ok: root.hasPlayer && root.player.canGoPrevious; onActivated: root.player.Previous() }
+                BarButton { glyph: root.playing ? 0xF03E4 : 0xF040A; ok: root.hasPlayer; onActivated: root.player.PlayPause() }
+                BarButton { glyph: 0xF04AD; ok: root.hasPlayer && root.player.canGoNext; onActivated: root.player.Next() }
             }
         }
     }
 
     // --- Popup ---------------------------------------------------------------------------------
     fullRepresentation: PlasmaExtras.Representation {
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 24    // same size as the system tray popups
+        // same size as the system tray popups, and fixed: long titles elide instead of widening the popup
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 24
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 24
         Layout.preferredHeight: Kirigami.Units.gridUnit * 34   // room for the song list
-        Layout.minimumWidth: Kirigami.Units.gridUnit * 18
+        Layout.minimumWidth: Kirigami.Units.gridUnit * 24
         Layout.minimumHeight: Kirigami.Units.gridUnit * 20
         collapseMarginsHint: true
 
@@ -268,23 +289,29 @@ PlasmoidItem {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Kirigami.Units.largeSpacing
-            spacing: Kirigami.Units.largeSpacing
+            anchors.margins: Kirigami.Units.largeSpacing * 1.5
+            spacing: Kirigami.Units.largeSpacing * 1.5
 
-            // now playing
+            // now playing (a placeholder while nothing plays): cover and text share one fixed height,
+            // title at the top, controls at the bottom
             RowLayout {
-                visible: root.hasPlayer
-                spacing: Kirigami.Units.largeSpacing
+                id: nowPlaying
+                readonly property real size: Kirigami.Units.gridUnit * 6.5
+                Layout.fillWidth: true
+                Layout.preferredHeight: size
+                Layout.minimumHeight: size
+                Layout.maximumHeight: size
+                spacing: Kirigami.Units.largeSpacing * 1.5
                 Rectangle {
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 4
-                    Layout.preferredHeight: Layout.preferredWidth
-                    radius: Kirigami.Units.cornerRadius
+                    Layout.preferredWidth: nowPlaying.size
+                    Layout.preferredHeight: nowPlaying.size
+                    radius: Kirigami.Units.cornerRadius * 1.5
                     color: Qt.alpha(Kirigami.Theme.highlightColor, 0.15)
                     clip: true
                     Image {
                         id: cover
                         anchors.fill: parent
-                        source: root.coverUrl
+                        source: root.hasPlayer ? root.coverUrl : ""
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
                         visible: status === Image.Ready
@@ -294,28 +321,38 @@ PlasmoidItem {
                         visible: cover.status !== Image.Ready
                         text: String.fromCodePoint(0xF075A)
                         font.family: root.mono
-                        font.pixelSize: Kirigami.Units.gridUnit * 1.6
+                        font.pixelSize: Kirigami.Units.gridUnit * 2
                         color: Kirigami.Theme.highlightColor
+                        opacity: root.hasPlayer ? 1 : 0.5
                     }
                 }
                 ColumnLayout {
+                    id: info
                     Layout.fillWidth: true
-                    spacing: 2
-                    Kirigami.Heading { Layout.fillWidth: true; level: 4; text: root.title; elide: Text.ElideRight }
+                    Layout.fillHeight: true
+                    spacing: Kirigami.Units.smallSpacing
+                    Kirigami.Heading { Layout.fillWidth: true; level: 3; elide: Text.ElideRight
+                                       text: root.hasPlayer ? root.title : i18n("Nothing is playing")
+                                       opacity: root.hasPlayer ? 1 : 0.6 }
                     PC3.Label { Layout.fillWidth: true; visible: text !== ""; text: root.artist; elide: Text.ElideRight
                                 color: Kirigami.Theme.highlightColor }
-                    PC3.Label { text: root.player ? root.niceName(root.player.identity) : ""; opacity: 0.45; font: Kirigami.Theme.smallFont }
+                    PC3.Label { Layout.fillWidth: true; elide: Text.ElideRight; opacity: 0.45; font: Kirigami.Theme.smallFont
+                                text: root.hasPlayer ? root.niceName(root.player.identity)
+                                                     : i18n("Search for a song below to start.") }
+                    Item { Layout.fillHeight: true }
                     RowLayout {
+                        Layout.leftMargin: -Kirigami.Units.smallSpacing   // the buttons' own padding lines them up with the text
                         spacing: Kirigami.Units.smallSpacing
                         PC3.ToolButton { icon.name: "media-playlist-shuffle"; checkable: true
-                                         checked: root.player && root.player.shuffle
-                                         visible: root.player && root.player.canControl
+                                         checked: root.hasPlayer && root.player.shuffle
+                                         enabled: root.hasPlayer && root.player.canControl
                                          onClicked: root.player.shuffle = !root.player.shuffle }
-                        PC3.ToolButton { icon.name: "media-skip-backward"; enabled: root.player && root.player.canGoPrevious
+                        PC3.ToolButton { icon.name: "media-skip-backward"; enabled: root.hasPlayer && root.player.canGoPrevious
                                          onClicked: root.player.Previous() }
                         PC3.ToolButton { icon.name: root.playing ? "media-playback-pause" : "media-playback-start"
+                                         enabled: root.hasPlayer
                                          onClicked: root.player.PlayPause() }
-                        PC3.ToolButton { icon.name: "media-skip-forward"; enabled: root.player && root.player.canGoNext
+                        PC3.ToolButton { icon.name: "media-skip-forward"; enabled: root.hasPlayer && root.player.canGoNext
                                          onClicked: root.player.Next() }
                     }
                 }
@@ -339,7 +376,7 @@ PlasmoidItem {
                 }
             }
 
-            Kirigami.Separator { Layout.fillWidth: true; visible: root.hasPlayer }
+            Kirigami.Separator { Layout.fillWidth: true }
 
             // --- Source: Spotify / YouTube Music, two small icons next to the search ---------------------
             RowLayout {
@@ -438,7 +475,7 @@ PlasmoidItem {
                                       : (root.spotify.installed && root.spotify.authenticated)
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.largeSpacing
                 PC3.Label {
                     visible: root.error !== ""
                     text: root.error
@@ -476,11 +513,12 @@ PlasmoidItem {
                         delegate: PC3.ItemDelegate {
                             required property var modelData
                             width: ListView.view.width
+                            topPadding: Kirigami.Units.smallSpacing; bottomPadding: Kirigami.Units.smallSpacing
                             onClicked: root.play(modelData)
                             contentItem: RowLayout {
-                                spacing: Kirigami.Units.smallSpacing
+                                spacing: Kirigami.Units.largeSpacing
                                 Rectangle {
-                                    Layout.preferredWidth: Kirigami.Units.gridUnit * 1.8
+                                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
                                     Layout.preferredHeight: Layout.preferredWidth
                                     radius: modelData.kind === "artist" ? width / 2 : 3
                                     color: Qt.alpha(Kirigami.Theme.highlightColor, 0.15)
