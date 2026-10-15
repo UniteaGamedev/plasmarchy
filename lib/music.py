@@ -50,6 +50,22 @@ def authenticated():
     return os.path.isfile(os.path.join(CACHE, "credentials.json")) and bool(glob.glob(os.path.join(CACHE, "*token*.json")))
 
 
+SHARED_CLIENT_IDS = {"", "d420a117a32841c2b3474932e49fb54b", "65b708073fc0480ea92a077233ca87bd"}
+
+
+def client_id():
+    try:
+        m = re.search(r'(?m)^client_id\s*=\s*"([^"]*)"', open(CONFIG).read())
+    except OSError:
+        return ""
+    return m.group(1) if m else ""
+
+
+def own_app():
+    """True once the user's own Spotify app is configured (the shared one is rate limited almost always)."""
+    return client_id() not in SHARED_CLIENT_IDS
+
+
 def rate_limited():
     """True if Spotify answered "429 Too Many Requests" in the player's latest log during the last minute."""
     logs = sorted(glob.glob(os.path.join(CACHE, "spotify-player-*.log")), key=os.path.getmtime)
@@ -67,7 +83,8 @@ def running():
 def status():
     yt = yt_status()
     yt["running"] = subprocess.run(["pgrep", "-f", MPV_SOCKET], capture_output=True).returncode == 0   # our mpv
-    return {"installed": bool(binary()), "authenticated": authenticated(), "running": running(), "youtube": yt}
+    return {"installed": bool(binary()), "authenticated": authenticated(), "running": running(), "ownApp": own_app(),
+            "youtube": yt}
 
 
 # --- YouTube Music (yt-dlp + mpv) -------------------------------------------------------------------

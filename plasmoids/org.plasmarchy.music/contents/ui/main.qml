@@ -92,6 +92,9 @@ PlasmoidItem {
     }
     function run(args) { exec.connectSource("sh -c 'exec " + bin + " music " + args + "'") }
     readonly property bool youtube: Plasmoid.configuration.source === "youtube"
+    // Spotify works reliably only with the user's own (free) Spotify app: the shared one is always rate limited
+    readonly property bool spReady: !!spotify.installed && !!spotify.ownApp && !!spotify.authenticated
+    readonly property string redirectUri: "http://127.0.0.1:8989/login"
     property var ytResults: []
     function play(item) {
         busy = item.name; setError(item.kind === "yt" ? "youtube" : "spotify", "")
@@ -130,6 +133,7 @@ PlasmoidItem {
             else if (source.indexOf(" music playlists") >= 0) { if (out && out.items) root.library = out.items; root.busy = "" }
             else if (source.indexOf(" music search64 ") >= 0) { if (out && !out.error) root.results = out; root.busy = "" }
             else if (source.indexOf(" music yt-search64 ") >= 0) { if (out && out.items) root.ytResults = out.items; root.busy = "" }
+            else if (source.indexOf(" music client-id ") >= 0) { root.busy = ""; root.library = []; root.run("status") }
             else if (source.indexOf(" music yt-now") >= 0) { if (out) root.ytCover = out.image || "" }
             else if (source.indexOf(" music play ") >= 0 || source.indexOf(" music yt-play ") >= 0) { root.busy = ""; root.run("status") }
         }
@@ -387,8 +391,7 @@ PlasmoidItem {
                 PlasmaExtras.SearchField {
                     id: searchField
                     Layout.fillWidth: true
-                    visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed)
-                                          : (root.spotify.installed && root.spotify.authenticated)
+                    visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed) : root.spReady
                     placeholderText: root.youtube ? i18n("Search YouTube Music …") : i18n("Search Spotify …")
                     onAccepted: if (text.trim()) root.search(text.trim())
                     onTextChanged: if (text === "") { root.results = null; root.ytResults = [] }
@@ -399,7 +402,7 @@ PlasmoidItem {
             // not set up yet: what to do, the command to copy, a terminal, or set it up automatically
             ColumnLayout {
                 readonly property bool ytMissing: root.youtube && !(root.spotify.youtube && root.spotify.youtube.installed)
-                readonly property bool spMissing: !root.youtube && (!root.spotify.installed || !root.spotify.authenticated)
+                readonly property bool spMissing: !root.youtube && (!root.spotify.installed || (root.spotify.ownApp && !root.spotify.authenticated))
                 readonly property string command: root.youtube ? "sudo pacman -S --needed yt-dlp mpv-mpris"
                                                   : !root.spotify.installed ? "sudo pacman -S --needed spotify-player"
                                                   : "plasmarchy music login"
@@ -469,10 +472,121 @@ PlasmoidItem {
                 Item { Layout.fillHeight: true }
             }
 
+            // Spotify: set up your own Spotify app, step by step (Spotify offers no way to create it for you)
+            ColumnLayout {
+                visible: !root.youtube && root.spotify.installed && !root.spotify.ownApp
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Heading {
+                    Layout.fillWidth: true
+                    level: 4
+                    text: i18n("Connect your own Spotify app")
+                }
+                PC3.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    opacity: 0.7
+                    text: i18n("Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.")
+                }
+                // 1. portal
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+                    PC3.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                text: i18n("1. Open the Spotify developer portal and sign in with your Spotify account.") }
+                    PC3.Button {
+                        text: i18n("Open portal")
+                        icon.name: "internet-web-browser"
+                        onClicked: Qt.openUrlExternally("https://developer.spotify.com/dashboard/create")
+                    }
+                }
+                // 2. what to enter
+                PC3.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: i18n("2. Create an app with these values, tick “Web API” and save:")
+                }
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 3
+                    columnSpacing: Kirigami.Units.smallSpacing
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    PC3.Label { text: i18n("App name"); opacity: 0.7; font: Kirigami.Theme.smallFont }
+                    PC3.TextField { id: nameField; Layout.fillWidth: true; readOnly: true; text: "Plasmarchy"; font.family: root.mono }
+                    PC3.ToolButton { icon.name: "edit-copy"; onClicked: { nameField.selectAll(); nameField.copy(); nameField.deselect(); copiedHint.show() }
+                                     PC3.ToolTip { text: i18n("Copy") } }
+                    PC3.Label { text: i18n("App description"); opacity: 0.7; font: Kirigami.Theme.smallFont }
+                    PC3.TextField { id: descField; Layout.fillWidth: true; readOnly: true; text: "Music in the Plasmarchy top bar"; font.family: root.mono }
+                    PC3.ToolButton { icon.name: "edit-copy"; onClicked: { descField.selectAll(); descField.copy(); descField.deselect(); copiedHint.show() }
+                                     PC3.ToolTip { text: i18n("Copy") } }
+                    PC3.Label { text: "Redirect URI"; opacity: 0.7; font: Kirigami.Theme.smallFont }
+                    PC3.TextField { id: uriField; Layout.fillWidth: true; readOnly: true; text: root.redirectUri; font.family: root.mono }
+                    PC3.ToolButton { icon.name: "edit-copy"; onClicked: { uriField.selectAll(); uriField.copy(); uriField.deselect(); copiedHint.show() }
+                                     PC3.ToolTip { text: i18n("Copy") } }
+                }
+                PC3.Label {
+                    id: copiedHint
+                    function show() { visible = true; hideHint.restart() }
+                    visible: false
+                    text: i18n("Copied")
+                    font: Kirigami.Theme.smallFont
+                    color: Kirigami.Theme.positiveTextColor
+                    Timer { id: hideHint; interval: 2000; onTriggered: copiedHint.visible = false }
+                }
+                // 3. client id
+                PC3.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: i18n("3. Open the new app, copy its Client ID and paste it here:")
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    PC3.TextField {
+                        id: clientIdField
+                        Layout.fillWidth: true
+                        placeholderText: "Client ID"
+                        font.family: root.mono
+                        readonly property string clean: text.trim().toLowerCase()
+                        readonly property bool valid: /^[0-9a-f]{32}$/.test(clean)
+                        onAccepted: if (valid) connectButton.clicked()
+                    }
+                    PC3.Button {
+                        id: connectButton
+                        text: i18n("Connect")
+                        icon.name: "network-connect"
+                        enabled: clientIdField.valid && root.busy !== "client-id"
+                        onClicked: { root.busy = "client-id"; root.setError("spotify", ""); root.run("client-id " + clientIdField.clean) }
+                    }
+                }
+                PC3.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    visible: clientIdField.text.trim() !== "" && !clientIdField.valid
+                    text: i18n("That doesn't look like a Client ID (32 characters, 0-9 and a-f).")
+                    font: Kirigami.Theme.smallFont
+                    color: Kirigami.Theme.negativeTextColor
+                }
+                RowLayout {
+                    visible: root.busy === "client-id"
+                    spacing: Kirigami.Units.smallSpacing
+                    PC3.BusyIndicator { running: parent.visible; implicitWidth: Kirigami.Units.iconSizes.small; implicitHeight: implicitWidth }
+                    PC3.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                text: i18n("Confirm the connection to “Plasmarchy” in your browser …") }
+                }
+                PC3.Label {
+                    visible: root.error !== ""
+                    text: root.error
+                    color: Kirigami.Theme.negativeTextColor
+                    wrapMode: Text.WordWrap; Layout.fillWidth: true
+                    font: Kirigami.Theme.smallFont
+                }
+                Item { Layout.fillHeight: true }
+            }
+
             // search and library
             ColumnLayout {
-                visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed)
-                                      : (root.spotify.installed && root.spotify.authenticated)
+                visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed) : root.spReady
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: Kirigami.Units.largeSpacing
