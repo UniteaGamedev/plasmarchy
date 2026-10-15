@@ -301,7 +301,7 @@ PlasmoidItem {
                 Layout.preferredHeight: size
                 Layout.minimumHeight: size
                 Layout.maximumHeight: size
-                spacing: Kirigami.Units.largeSpacing * 1.5
+                spacing: Kirigami.Units.gridUnit * 1.2   // a clear gap between cover and text
                 Rectangle {
                     Layout.preferredWidth: nowPlaying.size
                     Layout.preferredHeight: nowPlaying.size

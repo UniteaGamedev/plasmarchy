@@ -15,6 +15,7 @@ radio (YouTube mix) so next/previous work. The widget shows/controls both throug
   music.py yt-search <query>        JSON: songs on YouTube Music
   music.py yt-play <id|url>         play a song (as a radio) or a YouTube/YouTube Music link
   music.py yt-now                   JSON: cover of the song our mpv plays
+  music.py yt-extend <id>           append songs similar to <id> to the queue (used by radio.lua)
 """
 import glob
 import json
@@ -224,6 +225,23 @@ def ytm_radio(video_id):
     return out
 
 
+RADIO_SCRIPT = os.path.join(os.path.dirname(os.path.realpath(__file__)), "radio.lua")
+
+
+def yt_extend(video_id):
+    """Called by radio.lua when the queue runs low: append songs similar to video_id that aren't queued yet."""
+    queued = {e.get("filename", "") for e in (mpv_command("get_property", "playlist") or [])}
+    added = 0
+    for vid, title in ytm_radio(video_id):
+        url = "https://music.youtube.com/watch?v=" + vid
+        if url in queued:
+            continue
+        opts = f"force-media-title=%{len(title.encode())}%{title}" if title else ""
+        mpv_command("loadfile", url, "append", -1, opts)
+        added += 1
+    return {"added": added}
+
+
 def yt_play(target):
     """Play a song as a radio (it and similar songs after it) or a YouTube / YouTube Music link as it is."""
     if not yt_status()["installed"]:
@@ -241,7 +259,8 @@ def yt_play(target):
         mpv_command("get_property", "pid")
     except OSError:   # no player running yet: start an empty one, then fill it
         args = ["mpv", "--no-video", "--idle=yes", "--force-window=no", "--no-terminal",
-                f"--input-ipc-server={MPV_SOCKET}", "--ytdl-format=bestaudio/best", "--title=YouTube Music"]
+                f"--input-ipc-server={MPV_SOCKET}", "--ytdl-format=bestaudio/best", "--title=YouTube Music",
+                f"--script={RADIO_SCRIPT}"]   # keeps the radio going
         plugin = mpris_plugin()
         if plugin and not plugin.startswith("/etc/mpv/scripts") and "/.config/mpv/scripts" not in plugin:
             args.append(f"--script={plugin}")   # not in an auto-loaded scripts folder
@@ -449,6 +468,8 @@ def main():
         elif cmd == "yt-search64" and len(a) == 2:   # from the widget
             import base64
             result = yt_search(base64.b64decode(a[1]).decode("utf-8"))
+        elif cmd == "yt-extend" and len(a) == 2:
+            result = yt_extend(a[1])
         elif cmd == "yt-now":
             result = yt_now()
         elif cmd == "yt-play" and len(a) == 2:
