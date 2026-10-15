@@ -28,13 +28,13 @@ WAKE_ENV = os.path.join(voice.DATA, "wakeenv")
 TALK_ACTION = ["plasmarchy-talk.desktop", "_launch", "Talk to your computer", "Talk to your computer"]
 
 VOICES = {
-    "en_US-ryan-medium": "Ryan – English (US), male",
-    "en_US-amy-medium": "Amy – English (US), female",
-    "en_GB-alba-medium": "Alba – English (UK), female",
-    "de_DE-thorsten-medium": "Thorsten – German, male",
-    "de_DE-thorsten-high": "Thorsten HQ – German, male (more natural, larger)",
-    "de_DE-kerstin-low": "Kerstin – German, female",
-    "de_DE-ramona-low": "Ramona – German, female",
+    "en_US-ryan-medium": "Ryan · English (US), male",
+    "en_US-amy-medium": "Amy · English (US), female",
+    "en_GB-alba-medium": "Alba · English (UK), female",
+    "de_DE-thorsten-medium": "Thorsten · German, male",
+    "de_DE-thorsten-high": "Thorsten HQ · German, male (more natural, larger)",
+    "de_DE-kerstin-low": "Kerstin · German, female",
+    "de_DE-ramona-low": "Ramona · German, female",
 }
 MODELS = {"base": "Fast (base, 142 MB)", "small": "Balanced (small, 466 MB)",
           "medium": "Accurate (medium, 1.5 GB, slower)"}

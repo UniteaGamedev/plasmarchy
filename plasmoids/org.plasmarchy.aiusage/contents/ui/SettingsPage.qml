@@ -141,7 +141,7 @@ QQC2.ScrollView {
                     }
                     PC3.Label {
                         text: alerts.selected.length ? i18n("A notification appears when only this much of a Claude plan limit is left.")
-                                                     : i18n("No alerts – select one or more thresholds.")
+                                                     : i18n("No alerts. Select one or more thresholds.")
                         opacity: 0.6; font: Kirigami.Theme.smallFont; wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
                 }
@@ -187,9 +187,9 @@ QQC2.ScrollView {
                 ColumnLayout {
                     PC3.ProgressBar { from: -75; to: -15; value: page.app.micLevel; Layout.preferredWidth: Kirigami.Units.gridUnit * 11 }
                     PC3.Label {
-                        text: page.app.micLevel > -45 ? i18n("Good – speech comes through")
-                            : page.app.micLevel > -60 ? i18n("Quiet – move closer to the microphone")
-                            : i18n("Barely any signal – choose another microphone")
+                        text: page.app.micLevel > -45 ? i18n("Good, speech comes through")
+                            : page.app.micLevel > -60 ? i18n("Quiet, move closer to the microphone")
+                            : i18n("Barely any signal, choose another microphone")
                         font: Kirigami.Theme.smallFont; opacity: 0.75
                     }
                 }
@@ -284,8 +284,8 @@ QQC2.ScrollView {
             }
             PC3.Label {
                 text: page.s && page.s.wake.word !== "off"
-                      ? i18n("Pronounce it in English. The microphone then listens continuously – locally, nothing leaves your computer.")
-                      : i18n("Without a wake word, conversations start only via the hotkey – the microphone stays off otherwise.")
+                      ? i18n("Pronounce it in English. The microphone then listens continuously. Everything stays local, nothing leaves your computer.")
+                      : i18n("Without a wake word, conversations start only via the hotkey. The microphone stays off otherwise.")
                 wrapMode: Text.WordWrap; Layout.fillWidth: true
                 opacity: 0.6; font: Kirigami.Theme.smallFont
             }
@@ -294,7 +294,7 @@ QQC2.ScrollView {
         RowLayout {
             visible: page.app.busy !== ""
             PC3.BusyIndicator { implicitWidth: Kirigami.Units.iconSizes.small; implicitHeight: implicitWidth; running: parent.visible }
-            PC3.Label { text: page.app.busy === "level" ? i18n("Listening for 2 seconds – say something …")
+            PC3.Label { text: page.app.busy === "level" ? i18n("Listening for 2 seconds, say something …")
                              : page.app.busy === "sample" ? i18n("Playing sample …") : i18n("Saving … (downloads can take a moment)")
                         opacity: 0.75 }
         }

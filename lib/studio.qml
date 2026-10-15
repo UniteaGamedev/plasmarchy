@@ -20,11 +20,13 @@ ApplicationWindow {
     title: "Plasmarchy – Theme Studio"
 
     readonly property var args: Qt.application.arguments
-    readonly property string manifestFile: args[args.length - 2]
-    readonly property string statusFile: args[args.length - 1]
+    readonly property string manifestFile: args[args.indexOf("--") + 1]
+    readonly property string statusFile: args[args.indexOf("--") + 2]
+    readonly property bool openCatalog: args.indexOf("catalog") > args.indexOf("--")
 
     property var manifest: ({ themes: [], folderColors: [], paletteKeys: [] })
     property int selected: -1
+    readonly property bool readOnly: theme !== null && theme !== undefined && !theme.user   // built-in themes
     property var draft: null            // working copy of the selected theme
     property bool dirty: false
     property int lastSeq: 0
@@ -100,6 +102,9 @@ ApplicationWindow {
             win.message = st.message
             win.messageOk = st.ok
             win.loadManifest(st.ok && st.slug ? st.slug : "")
+            if (catalogDialog.opened && ["catalog", "install", "uninstall"].indexOf(st.verb) >= 0) {
+                try { win.catalog = win.readJson(win.manifestFile.replace("themes.json", "catalog.json")) } catch (e) { win.catalog = { error: st.message, themes: [] } }
+            }
             if (st.ok && win.pendingApply && st.verb === "save") {
                 win.pendingApply = false
                 // The script already re-applies the active theme after saving
@@ -108,7 +113,10 @@ ApplicationWindow {
         }
     }
 
-    Component.onCompleted: loadManifest("")
+    Component.onCompleted: {
+        loadManifest("")
+        if (openCatalog) { catalogDialog.open(); send("catalog", "list") }
+    }
 
     ColorDialog {
         id: colorDialog
@@ -138,13 +146,72 @@ ApplicationWindow {
         }
         onAccepted: if (newName.text.trim()) { win.pendingSelect = ""; win.send("new", newName.text.trim()); newName.text = "" }
     }
+    // --- Theme catalog: more themes to install -----------------------------------------------------
+    property var catalog: null          // {themes: [...]} from themestore.py
+    Dialog {
+        id: catalogDialog
+        title: tr("More themes")
+        anchors.centerIn: parent
+        width: Math.min(win.width - 80, 860)
+        height: Math.min(win.height - 80, 620)
+        modal: true
+        standardButtons: Dialog.Close
+        ColumnLayout {
+            anchors.fill: parent
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                opacity: 0.7
+                text: win.catalog === null ? tr("Loading the theme catalog …")
+                    : win.catalog.error ? win.catalog.error
+                    : tr("Themes from the Plasmarchy catalog on GitHub. Anyone can add one with a pull request.")
+            }
+            GridView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                cellWidth: width / Math.max(1, Math.floor(width / 270))
+                cellHeight: 230
+                model: win.catalog && win.catalog.themes ? win.catalog.themes : []
+                delegate: Item {
+                    required property var modelData
+                    width: GridView.view.cellWidth; height: 230
+                    ColumnLayout {
+                        anchors.fill: parent; anchors.margins: 8
+                        spacing: 6
+                        Image {
+                            Layout.fillWidth: true; Layout.preferredHeight: 140
+                            source: modelData.thumbPath ? "file://" + modelData.thumbPath : ""
+                            fillMode: Image.PreserveAspectCrop; asynchronous: true
+                        }
+                        RowLayout {
+                            Label { text: modelData.name; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+                            Label { visible: !!modelData.animation; text: tr("animated"); opacity: 0.55; font.pixelSize: 11 }
+                        }
+                        RowLayout {
+                            Label { text: (modelData.size / 1e6).toFixed(1) + " MB"; opacity: 0.5; font.pixelSize: 11; Layout.fillWidth: true }
+                            Button {
+                                text: modelData.installed ? tr("Uninstall") : tr("Install")
+                                highlighted: !modelData.installed
+                                onClicked: win.send(modelData.installed ? "uninstall" : "install", modelData.slug)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Dialog {
         id: deleteDialog
         title: tr("Delete theme?")
         anchors.centerIn: parent
         modal: true
         standardButtons: Dialog.Yes | Dialog.No
-        Label { text: win.theme ? tr("“{0}” will be deleted permanently.", win.theme.name) : "" }
+        Label {
+            text: !win.theme ? "" : win.theme.user ? tr("“{0}” will be deleted permanently.", win.theme.name)
+                : tr("“{0}” will be removed. You can get it back any time under “More themes”.", win.theme.name)
+        }
         onAccepted: win.send("delete", win.theme.slug)
     }
 
@@ -185,11 +252,16 @@ ApplicationWindow {
                 }
                 Button { text: "+ " + tr("New theme"); Layout.fillWidth: true; onClicked: newDialog.open() }
                 Button {
-                    text: tr("Delete"); Layout.fillWidth: true
-                    enabled: win.theme && win.theme.user
+                    text: win.theme && win.theme.user ? tr("Delete") : tr("Remove")
+                    Layout.fillWidth: true
+                    enabled: win.theme && win.theme.slug !== win.manifest.current
                     onClicked: deleteDialog.open()
-                    ToolTip.visible: hovered && win.theme && !win.theme.user
-                    ToolTip.text: tr("Built-in themes are protected")
+                    ToolTip.visible: hovered && win.theme && win.theme.slug === win.manifest.current
+                    ToolTip.text: tr("The active theme can't be removed")
+                }
+                Button {
+                    text: tr("More themes …"); Layout.fillWidth: true; icon.name: "get-hot-new-stuff"
+                    onClicked: { win.catalog = null; catalogDialog.open(); win.send("catalog", "list") }
                 }
             }
         }
@@ -212,13 +284,9 @@ ApplicationWindow {
                     TextField {
                         Layout.fillWidth: true
                         font.pixelSize: 20
+                        readOnly: win.readOnly
                         text: win.draft ? win.draft.name : ""
                         onTextEdited: { win.draft.name = text; win.dirty = true }
-                    }
-                    Label {
-                        visible: win.theme && !win.theme.user
-                        text: tr("built-in – changes are saved as your own copy")
-                        opacity: 0.6
                     }
                 }
 
@@ -226,6 +294,7 @@ ApplicationWindow {
                     spacing: 18
                     Label { text: tr("Mode") }
                     ComboBox {
+                        enabled: !win.readOnly
                         model: [tr("Dark"), tr("Light")]
                         currentIndex: win.draft && win.draft.mode === "light" ? 1 : 0
                         onActivated: (i) => { win.draft.mode = i === 1 ? "light" : "dark"; win.touch() }
@@ -233,14 +302,16 @@ ApplicationWindow {
                     Label { text: tr("Folder color") }
                     ComboBox {
                         id: folderBox
+                        enabled: !win.readOnly
                         model: win.manifest.folderColors
                         currentIndex: win.draft ? win.manifest.folderColors.indexOf(win.draft.folder) : 0
                         onActivated: (i) => { win.draft.folder = win.manifest.folderColors[i]; win.touch() }
                     }
                     Label { text: tr("Animated wallpaper") }
                     ComboBox {
-                        readonly property var values: ["", "aurora", "particles", "rain"]
-                        model: [tr("None (still image)"), tr("Aurora"), tr("Particles"), tr("Code rain")]
+                        enabled: !win.readOnly
+                        readonly property var values: ["", "aurora", "particles", "rain", "logo"]
+                        model: [tr("None (still image)"), tr("Aurora"), tr("Particles"), tr("Code rain"), tr("Logo animation")]
                         currentIndex: win.draft ? Math.max(0, values.indexOf(win.draft.animation || "")) : 0
                         onActivated: (i) => { win.draft.animation = values[i]; win.touch() }
                     }
@@ -307,12 +378,13 @@ ApplicationWindow {
                                 width: 30; height: 30; radius: 6
                                 color: win.p[modelData] || "transparent"
                                 border.color: "#80808080"
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                MouseArea { anchors.fill: parent; enabled: !win.readOnly; cursorShape: Qt.PointingHandCursor
                                     onClicked: { colorDialog.key = modelData; colorDialog.selectedColor = win.p[modelData] || "#000000"; colorDialog.open() } }
                             }
                             Label { text: win.labels[modelData] || modelData; Layout.preferredWidth: 140; elide: Text.ElideRight }
                             TextField {
                                 Layout.preferredWidth: 90
+                                readOnly: win.readOnly
                                 font.family: "JetBrainsMono Nerd Font"
                                 text: win.p[modelData] || ""
                                 validator: RegularExpressionValidator { regularExpression: /#[0-9a-fA-F]{0,6}/ }
@@ -325,7 +397,7 @@ ApplicationWindow {
                 RowLayout {
                     Label { text: tr("Wallpapers"); font.pixelSize: 16; font.bold: true }
                     Item { Layout.fillWidth: true }
-                    Button { text: tr("Add image…"); onClicked: imageDialog.open() }
+                    Button { text: tr("Add image…"); visible: !win.readOnly; onClicked: imageDialog.open() }
                 }
                 Flow {
                     Layout.fillWidth: true
@@ -341,6 +413,7 @@ ApplicationWindow {
                             RoundButton {
                                 anchors { top: parent.top; right: parent.right; margins: 4 }
                                 text: "✕"; width: 28; height: 28
+                                visible: !win.readOnly
                                 onClicked: { win.draft.backgrounds.splice(index, 1); win.touch() }
                             }
                         }
@@ -362,9 +435,14 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
             }
-            Button { text: tr("Discard"); enabled: win.dirty; onClicked: win.select(win.selected) }
-            Button { text: tr("Save"); enabled: win.draft !== null && win.dirty; onClicked: win.save(false) }
-            Button { text: tr("Save & apply"); highlighted: true; enabled: win.draft !== null; onClicked: win.save(true) }
+            // Built-in themes are read-only: duplicate one to customize it
+            Button { text: tr("Duplicate"); visible: win.readOnly; enabled: win.draft !== null
+                     onClicked: { win.pendingSelect = ""; win.send("duplicate", win.theme.slug) } }
+            Button { text: tr("Apply"); visible: win.readOnly; highlighted: true; enabled: win.draft !== null
+                     onClicked: win.send("apply", win.theme.slug) }
+            Button { text: tr("Discard"); visible: !win.readOnly; enabled: win.dirty; onClicked: win.select(win.selected) }
+            Button { text: tr("Save"); visible: !win.readOnly; enabled: win.draft !== null && win.dirty; onClicked: win.save(false) }
+            Button { text: tr("Save & apply"); visible: !win.readOnly; highlighted: true; enabled: win.draft !== null; onClicked: win.save(true) }
         }
     }
 }

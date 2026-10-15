@@ -15,6 +15,22 @@ XDG_CACHE = os.environ.get("XDG_CACHE_HOME", os.path.join(HOME, ".cache"))
 
 BASE = os.path.join(XDG_DATA, "plasmarchy")
 BUILTIN_THEMES = os.path.join(BASE, "themes")
+EXTRA_THEMES = os.path.join(BASE, "themes-extra")      # installed from the theme catalog
+HIDDEN_THEMES = os.path.join(XDG_CONFIG, "plasmarchy", "hidden-themes")   # removed built-in themes, one per line
+
+
+def hidden_themes():
+    try:
+        return {l.strip() for l in open(HIDDEN_THEMES) if l.strip()}
+    except OSError:
+        return set()
+
+
+def set_hidden(slug, hidden):
+    h = hidden_themes()
+    h = h | {slug} if hidden else h - {slug}
+    os.makedirs(os.path.dirname(HIDDEN_THEMES), exist_ok=True)
+    open(HIDDEN_THEMES, "w").write("".join(f"{x}\n" for x in sorted(h)))
 USER_THEMES = os.path.join(XDG_CONFIG, "plasmarchy", "themes")
 CACHE = os.path.join(XDG_CACHE, "plasmarchy")
 
@@ -32,11 +48,14 @@ IMAGE_EXT = (".webp", ".png", ".jpg", ".jpeg")
 
 
 def themes():
-    """{slug: directory} - custom themes override built-in themes of the same name."""
+    """{slug: directory} - custom themes override catalog and built-in themes of the same name."""
     found = {}
-    for root in (BUILTIN_THEMES, USER_THEMES):
+    hidden = hidden_themes()
+    for root in (BUILTIN_THEMES, EXTRA_THEMES, USER_THEMES):
         if os.path.isdir(root):
             for slug in os.listdir(root):
+                if root == BUILTIN_THEMES and slug in hidden:   # removed by the user (back via "More themes")
+                    continue
                 if os.path.isfile(os.path.join(root, slug, "colors.toml")):
                     found[slug] = os.path.join(root, slug)
     return dict(sorted(found.items()))
@@ -55,7 +74,12 @@ def is_user_theme(slug):
 
 
 def is_builtin_theme(slug):
-    return os.path.isfile(os.path.join(BUILTIN_THEMES, slug, "colors.toml"))
+    """Shipped with Plasmarchy or installed from the catalog - read-only, can be duplicated."""
+    return any(os.path.isfile(os.path.join(root, slug, "colors.toml")) for root in (BUILTIN_THEMES, EXTRA_THEMES))
+
+
+def is_extra_theme(slug):
+    return os.path.isfile(os.path.join(EXTRA_THEMES, slug, "colors.toml"))
 
 
 def load_colors(slug):

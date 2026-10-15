@@ -139,7 +139,7 @@ def setup():
                 build(cmake, src, "build-cuda", ["-DGGML_CUDA=ON", "-DCMAKE_CUDA_ARCHITECTURES=native"],
                       {"CUDACXX": nvcc(), "PATH": os.path.dirname(nvcc()) + ":" + os.environ.get("PATH", "")})
             except subprocess.CalledProcessError:
-                print("  " + tr("GPU build failed - using the CPU version"), flush=True)
+                print("  " + tr("GPU build failed, using the CPU version"), flush=True)
     elif nvcc() and "build-cuda" not in whisper_bin():   # existing CPU install: add the GPU build
         cmake = shutil.which("cmake") or os.path.join(DATA, "buildenv", "bin", "cmake")
         print("  " + tr("building the GPU version (CUDA, takes a while longer) …"), flush=True)
@@ -148,7 +148,7 @@ def setup():
                   ["-DGGML_CUDA=ON", "-DCMAKE_CUDA_ARCHITECTURES=native"],
                   {"CUDACXX": nvcc(), "PATH": os.path.dirname(nvcc()) + ":" + os.environ.get("PATH", "")})
         except subprocess.CalledProcessError:
-            print("  " + tr("GPU build failed - using the CPU version"), flush=True)
+            print("  " + tr("GPU build failed, using the CPU version"), flush=True)
     download(f"{MODELS}/ggml-{conf()['VOICE_MODEL']}.bin", p["model"])
     print(json.dumps(status()))
 
@@ -329,7 +329,7 @@ def transcribe():
     # Never send Whisper's noise placeholders ([MUSIC], *knocking*, (noise) ...) as a message
     text = re.sub(r"\[[^\]]*\]|\*[^*]*\*|\([^)]*\)", "", text).strip(" .,!?-")
     if not text:
-        return {"error": tr("Didn't catch that – speak a bit closer to the microphone (check it in the settings)")}
+        return {"error": tr("Didn't catch that. Please speak a bit closer to the microphone (check it in the settings).")}
     return {"text": text}
 
 

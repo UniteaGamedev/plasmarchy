@@ -26,7 +26,8 @@ WallpaperItem {
     Repeater {
         model: tasks
         delegate: Item {
-            readonly property bool covers: model.IsMaximized || model.IsFullScreen
+            // Plasmarchy's own overlays (menu, theme picker) are transparent fullscreen windows - they don't cover
+            readonly property bool covers: (model.IsMaximized || model.IsFullScreen) && model.AppId !== "org.qt-project.qml"
             onCoversChanged: wallpaper.covering += covers ? 1 : -1
             Component.onCompleted: if (covers) wallpaper.covering += 1
             Component.onDestruction: if (covers) wallpaper.covering -= 1
@@ -44,6 +45,8 @@ WallpaperItem {
         // the version parameter makes Qt reload the image after the logo changed
         logo: wallpaper.cfg.logo ? "file://" + wallpaper.cfg.logo + "?v=" + wallpaper.cfg.logoVersion : ""
         showLogo: wallpaper.cfg.showLogo && wallpaper.cfg.logo !== ""
+        logoAscii: wallpaper.cfg.logoAscii
+        logoAnimated: wallpaper.cfg.logoAnimated
         speed: wallpaper.cfg.speed
         running: !(wallpaper.cfg.pauseWhenCovered && wallpaper.covering > 0)
     }

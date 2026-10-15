@@ -33,9 +33,9 @@ if [ -d "$STATE_DIR/backup/initial" ]; then
         while read -r f; do [ -n "$f" ] && rm -f "$HOME/.config/$f"; done < "$STATE_DIR/backup/initial.absent"
     fi
 else
-    step "$(t "No initial backup found - removing only the Plasmarchy entries")"
+    step "$(t "No initial backup found, removing only the Plasmarchy entries")"
     kwriteconfig6 --file kdeglobals --group "KDE Control Module Restrictions" --key kcm_lookandfeel --delete
-    for kcm in kcm_colors kcm_desktoptheme kcm_kwindecoration kcm_icons; do
+    for kcm in kcm_colors kcm_desktoptheme kcm_kwindecoration kcm_icons kcm_landingpage; do
         kwriteconfig6 --file kdeglobals --group "KDE Control Module Restrictions" --key "$kcm" --delete
     done
 fi
@@ -52,6 +52,7 @@ rm -f "$HOME"/.local/share/applications/plasmarchy-*.desktop
 rm -f "$HOME"/.local/share/color-schemes/Plasmarchy*.colors "$HOME"/.local/share/konsole/Plasmarchy*
 rm -rf "$HOME"/.local/share/icons/Papirus-Dark-* "$HOME"/.local/share/icons/Papirus-Light-*
 rm -rf "$HOME"/.local/share/plasma/desktoptheme/plasmarchy
+rm -f "$HOME"/.local/share/plasma/systemsettings/externalmodules/plasmarchy.desktop
 rm -f "$HOME"/.local/share/locale/*/LC_MESSAGES/plasma_*_org.plasmarchy.*.mo
 [ "$PURGE" = 1 ] && rm -rf "$CONF_DIR" "$STATE_DIR"
 kwriteconfig6 --file kglobalshortcutsrc --group services --group plasmarchy-talk.desktop --key _launch --delete
@@ -60,7 +61,7 @@ kbuildsycoca6 >/dev/null 2>&1
 
 step "$(t "Reloading Plasma and KWin")"
 qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1
-systemctl --user restart plasma-plasmashell
+systemctl --user reset-failed plasma-plasmashell 2>/dev/null; systemctl --user restart plasma-plasmashell
 
 echo
 t "Plasmarchy has been removed."

@@ -1,0 +1,156 @@
+{
+ "version": 1,
+ "themes": [
+  {
+   "slug": "catppuccin",
+   "name": "Catppuccin",
+   "mode": "dark",
+   "animation": "",
+   "colors": [
+    "#1e1e2e",
+    "#89b4fa",
+    "#f38ba8",
+    "#a6e3a1",
+    "#f9e2af",
+    "#89b4fa",
+    "#f5c2e7",
+    "#94e2d5"
+   ],
+   "thumb": "thumb.jpg",
+   "files": [
+    "backgrounds/1-totoro.webp",
+    "backgrounds/2-waves.webp",
+    "backgrounds/3-blue-eye.webp",
+    "colors.toml",
+    "kde.conf",
+    "preview.png"
+   ],
+   "size": 1152001
+  },
+  {
+   "slug": "ember",
+   "name": "Ember",
+   "mode": "dark",
+   "animation": "particles",
+   "colors": [
+    "#160e0a",
+    "#ff8a3d",
+    "#ff5a3c",
+    "#a3be5c",
+    "#ffc861",
+    "#c27c4e",
+    "#e0607e",
+    "#d9a066"
+   ],
+   "thumb": "thumb.jpg",
+   "files": [
+    "backgrounds/1-ember.jpg",
+    "colors.toml",
+    "kde.conf"
+   ],
+   "size": 130023
+  },
+  {
+   "slug": "gruvbox",
+   "name": "Gruvbox",
+   "mode": "dark",
+   "animation": "",
+   "colors": [
+    "#282828",
+    "#7daea3",
+    "#ea6962",
+    "#a9b665",
+    "#d8a657",
+    "#7daea3",
+    "#d3869b",
+    "#89b482"
+   ],
+   "thumb": "thumb.jpg",
+   "files": [
+    "backgrounds/1-the-backwater.jpg",
+    "backgrounds/2-flower-basket.webp",
+    "backgrounds/3-village-square.jpg",
+    "backgrounds/4-idyllic-procession.jpg",
+    "backgrounds/5-leaves.jpg",
+    "colors.toml",
+    "kde.conf",
+    "preview.png"
+   ],
+   "size": 9803545
+  },
+  {
+   "slug": "kanagawa",
+   "name": "Kanagawa",
+   "mode": "dark",
+   "animation": "",
+   "colors": [
+    "#1f1f28",
+    "#dcd7ba",
+    "#c34043",
+    "#76946a",
+    "#c0a36e",
+    "#7e9cd8",
+    "#957fb8",
+    "#6a9589"
+   ],
+   "thumb": "thumb.jpg",
+   "files": [
+    "backgrounds/1-kanagawa.jpg",
+    "colors.toml",
+    "kde.conf",
+    "preview.png"
+   ],
+   "size": 1966042
+  },
+  {
+   "slug": "neon-drift",
+   "name": "Neon Drift",
+   "mode": "dark",
+   "animation": "aurora",
+   "colors": [
+    "#140d24",
+    "#ff4fa3",
+    "#ff4d6d",
+    "#4fffb0",
+    "#ffd166",
+    "#6c8cff",
+    "#ff4fa3",
+    "#2de2e6"
+   ],
+   "thumb": "thumb.jpg",
+   "files": [
+    "backgrounds/1-neon-drift.jpg",
+    "colors.toml",
+    "kde.conf"
+   ],
+   "size": 141522
+  },
+  {
+   "slug": "ristretto",
+   "name": "Ristretto",
+   "mode": "dark",
+   "animation": "",
+   "colors": [
+    "#2c2525",
+    "#f38d70",
+    "#fd6883",
+    "#adda78",
+    "#f9cc6c",
+    "#f38d70",
+    "#a8a9eb",
+    "#85dacc"
+   ],
+   "thumb": "thumb.jpg",
+   "files": [
+    "backgrounds/0-launch.webp",
+    "backgrounds/1-color-curves.webp",
+    "backgrounds/2-coffee-beans.jpg",
+    "backgrounds/3-industrial-moon.webp",
+    "colors.toml",
+    "kde.conf",
+    "preview.png"
+   ],
+   "size": 1714399
+  }
+ ]
+}

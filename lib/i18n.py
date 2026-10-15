@@ -6,7 +6,7 @@ The language follows the system (LANGUAGE / LC_ALL / LC_MESSAGES / LANG); unknow
 
   from i18n import tr            tr("Theme: {0}", slug)
   i18n.py tr "<text>" [args...]  same, for shell scripts
-  i18n.py lang                   active language code
+  i18n.py lang                   active language code (e.g. "de" or "pt_BR")
   i18n.py build-mo <lang> <out.mo> [domain-prefix]
                                  compile the catalog into a gettext .mo file (used for the Plasma widget)
 """
@@ -19,22 +19,32 @@ LOCALE_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "locale")
 _catalog = None
 
 
-def language():
+def locale_name():
+    """Full locale of the user, e.g. "pt_BR" or "de" (from LANGUAGE / LC_ALL / LC_MESSAGES / LANG)."""
     for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
         value = os.environ.get(var, "")
         if value and value not in ("C", "POSIX"):
-            return value.split(":")[0].split(".")[0].split("_")[0].lower()
+            loc = value.split(":")[0].split(".")[0].split("@")[0]
+            lang, _, region = loc.partition("_")
+            return f"{lang.lower()}_{region.upper()}" if region else lang.lower()
     return "en"
 
 
+def language():
+    """Two-letter language code, e.g. "pt" for pt_BR."""
+    return locale_name().split("_")[0]
+
+
 def catalog(lang=None):
+    """Translations for the language - the regional catalog (pt_BR.json) wins, then the general one (pt.json)."""
     global _catalog
-    lang = lang or language()
+    lang = lang or locale_name()
     if _catalog is None or lang != _catalog[0]:
-        path = os.path.join(LOCALE_DIR, f"{lang}.json")
         data = {}
-        if lang != "en" and os.path.isfile(path):
-            data = json.load(open(path, encoding="utf-8"))
+        for name in (lang.split("_")[0], lang):          # general first, regional entries override
+            path = os.path.join(LOCALE_DIR, f"{name}.json")
+            if name != "en" and os.path.isfile(path):
+                data.update(json.load(open(path, encoding="utf-8")))
         _catalog = (lang, data)
     return _catalog[1]
 
@@ -46,7 +56,11 @@ def tr(text, *args):
 
 def build_mo(lang, out):
     """Write a GNU gettext .mo file from the JSON catalog (no gettext tools needed)."""
-    data = json.load(open(os.path.join(LOCALE_DIR, f"{lang}.json"), encoding="utf-8"))
+    data = {}
+    for name in dict.fromkeys((lang.split("_")[0], lang)):   # regional catalogs build on the general one
+        path = os.path.join(LOCALE_DIR, f"{name}.json")
+        if os.path.isfile(path):
+            data.update(json.load(open(path, encoding="utf-8")))
     entries = sorted((k.encode(), v.encode()) for k, v in data.items() if k and v)
     entries.insert(0, (b"", b"Content-Type: text/plain; charset=UTF-8\n"))
     n = len(entries)
@@ -73,7 +87,7 @@ if __name__ == "__main__":
     if a and a[0] == "tr":
         print(tr(a[1], *a[2:]))
     elif a and a[0] == "lang":
-        print(language())
+        print(locale_name())
     elif a and a[0] == "build-mo":
         build_mo(a[1], a[2])
     else:

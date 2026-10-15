@@ -196,6 +196,44 @@ def player(action):
     print("on" if on else "off")
 
 
+def launcher(style):
+    """Switch the menu button: "plasmarchy" (centered Plasmarchy menu) or "kde" (classic KDE application menu).
+    Either one gets the Windows key."""
+    new, old = ("org.kde.plasma.kickoff", "org.plasmarchy.menu") if style == "kde" else ("org.plasmarchy.menu", "org.kde.plasma.kickoff")
+    out = evaluate(f'''
+        var r = "";
+        panels().forEach(p => {{
+            if (p.location != "top") return;
+            var ws = p.widgets();
+            if (ws.some(w => w.type == "{new}")) return;
+            // visual order (AppletOrder); widgets() is in creation order
+            p.currentConfigGroup = ["General"];
+            var order = String(p.readConfig("AppletOrder", "")).split(";").filter(x => x).map(Number);
+            if (!order.length) order = ws.map(w => w.id);
+            var oldW = ws.filter(w => w.type == "{old}")[0];
+            var pos = oldW ? Math.max(0, order.indexOf(oldW.id)) : 0;
+            // release the old launcher's shortcut first - otherwise the new one can't get Alt+F1
+            ws.filter(w => w.type == "{old}").forEach(w => {{ w.globalShortcut = ""; w.remove(); }});
+            var w = p.addWidget("{new}");
+            w.globalShortcut = "Alt+F1";   // Plasma hands the Windows key to the launcher with a shortcut
+            if ("{new}" == "org.kde.plasma.kickoff") {{
+                w.currentConfigGroup = ["General"]; w.writeConfig("icon", "view-app-grid-symbolic");
+            }}
+            var alive = p.widgets().map(x => x.id);
+            var ids = order.filter(id => alive.indexOf(id) >= 0 && id != w.id);
+            alive.forEach(id => {{ if (ids.indexOf(id) < 0 && id != w.id) ids.push(id); }});
+            ids.splice(pos, 0, w.id);
+            r = p.id + " " + ids.join(";");
+        }});
+        print(r);''').strip()
+    if out:
+        panel, ids = out.split(" ", 1)
+        restart_plasma(before_start=lambda: subprocess.run(
+            ["kwriteconfig6", "--file", APPLETSRC, "--group", "Containments", "--group", panel, "--group", "General",
+             "--key", "AppletOrder", ids], check=False))
+    print(style)
+
+
 def migrate():
     """Bring an existing top bar up to date without rebuilding it: menu button instead of kickoff,
     AI assistant in the system tray, music player next to the menu button. Safe to run repeatedly."""
@@ -281,12 +319,20 @@ def tray_ai_shortcut(seq=AI_SHORTCUT):
 
 
 def restart_plasma(before_start=None):
+    # Several restarts in a row hit systemd's start limit and leave the desktop empty -> reset it first
+    reset = ["systemctl", "--user", "reset-failed", "plasma-plasmashell"]
     if before_start:
         subprocess.run(["systemctl", "--user", "stop", "plasma-plasmashell"], check=False)
         before_start()
+        subprocess.run(reset, capture_output=True)
         subprocess.run(["systemctl", "--user", "start", "plasma-plasmashell"], check=False)
     else:
+        subprocess.run(reset, capture_output=True)
         subprocess.run(["systemctl", "--user", "restart", "plasma-plasmashell"], check=False)
+    time.sleep(1)
+    if subprocess.run(["systemctl", "--user", "is-active", "--quiet", "plasma-plasmashell"]).returncode != 0:
+        subprocess.run(reset, capture_output=True)
+        subprocess.run(["systemctl", "--user", "start", "plasma-plasmashell"], check=False)
     for _ in range(40):   # wait until Plasma accepts scripts again
         time.sleep(0.5)
         if subprocess.run(["qdbus6", "org.kde.plasmashell", "/PlasmaShell"], capture_output=True).returncode == 0:
@@ -299,5 +345,7 @@ if __name__ == "__main__":
         player(sys.argv[2] if len(sys.argv) > 2 else "toggle")
     elif sys.argv[1:2] == ["migrate"]:
         migrate()
+    elif sys.argv[1:2] == ["launcher"] and len(sys.argv) == 3:
+        launcher(sys.argv[2])
     else:
         main()

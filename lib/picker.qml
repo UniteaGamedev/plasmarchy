@@ -165,38 +165,17 @@ Window {
                     }
                 }
 
-                // badge for themes with an animated wallpaper
-                Rectangle {
+                // small hint for themes with an animated wallpaper
+                Text {
                     visible: !!card.modelData.animation
-                    // top middle of the (slanted) tile - the right edge is covered by the neighbouring tile
-                    anchors.top: parent.top; anchors.topMargin: 14
+                    anchors.top: parent.top; anchors.topMargin: 10
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.horizontalCenterOffset: win.slant * 0.45
-                    height: 30
-                    width: badgeRow.implicitWidth + 20
-                    radius: 15
-                    color: Qt.rgba(0, 0, 0, 0.6)
-                    border.color: card.modelData.colors[1]
-                    border.width: 1.5
-                    opacity: card.selected ? 1 : 0.75
-                    Row {
-                        id: badgeRow
-                        anchors.centerIn: parent
-                        spacing: 6
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: String.fromCodePoint(0xF040A)   // play
-                            color: card.modelData.colors[1]
-                            font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 15
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: card.selected
-                            text: win.tr("animated")
-                            color: "white"
-                            font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 13
-                        }
-                    }
+                    text: String.fromCodePoint(0xF040A)   // play
+                    color: "white"
+                    opacity: card.selected ? 0.55 : 0.35
+                    font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 13
+                    style: Text.Raised; styleColor: Qt.rgba(0, 0, 0, 0.6)
                 }
 
                 MouseArea {
@@ -211,33 +190,26 @@ Window {
             }
         }
 
-        // name + palette below the selection
+        // name, and a quiet subtitle below the selection
         Column {
             anchors { top: list.bottom; topMargin: 28; horizontalCenter: parent.horizontalCenter }
-            spacing: 12
+            spacing: 6
+            readonly property var t: win.themes.length ? win.themes[list.currentIndex] : null
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: win.themes.length ? win.themes[list.currentIndex].name
-                      + (win.themes[list.currentIndex].animation ? "  ·  " + tr("animated wallpaper") : "")
-                      + (win.themes[list.currentIndex].slug === win.current ? "  ·  " + tr("active") : "") : ""
+                text: parent.t ? parent.t.name : ""
                 color: "white"
                 font.pixelSize: 28
                 font.weight: Font.DemiBold
                 font.letterSpacing: 1
             }
-            Row {
+            Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
-                Repeater {
-                    model: win.themes.length ? win.themes[list.currentIndex].colors : []
-                    delegate: Rectangle {
-                        required property string modelData
-                        width: 22; height: 22; radius: 11
-                        color: modelData
-                        border.color: Qt.rgba(1, 1, 1, 0.25)
-                        Behavior on color { ColorAnimation { duration: 250 } }
-                    }
-                }
+                text: !parent.t ? "" : [parent.t.animation ? tr("animated wallpaper") : "",
+                                        parent.t.slug === win.current ? tr("active") : ""].filter(x => x).join("  ·  ")
+                color: Qt.rgba(1, 1, 1, 0.5)
+                font.pixelSize: 15
+                font.letterSpacing: 0.5
             }
         }
 

@@ -15,7 +15,7 @@ PlasmoidItem {
     compactRepresentation: button
     activationTogglesExpanded: false
     toolTipMainText: i18n("Menu")
-    toolTipSubText: i18n("Apps, style, toggles, setup and system – also with the Windows key")
+    toolTipSubText: i18n("Apps, style, toggles, setup and system, also with the Windows key")
 
     function openMenu() { exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" menu'") }
 

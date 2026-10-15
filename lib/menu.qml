@@ -44,6 +44,10 @@ Window {
     readonly property var allEntries: flatten(menuData.menu, [])
 
     function score(entry, q) {
+        var s = rawScore(entry, q)
+        return s > 0 ? s + (entry.boost || 0) : 0
+    }
+    function rawScore(entry, q) {
         var l = entry.label.toLowerCase()
         if (l === q) return 100
         if (l.indexOf(q) === 0) return 80
@@ -145,6 +149,8 @@ Window {
                     background: Item {}
                     selectByMouse: true
                     Keys.onPressed: (event) => {
+                        // Super/Windows key again: close (KWin passes it to the focused menu instead of Plasma)
+                        if (event.key === Qt.Key_Meta || event.key === Qt.Key_Super_L || event.key === Qt.Key_Super_R) { win.finish(""); event.accepted = true; return }
                         if (event.key === Qt.Key_Down) { list.incrementCurrentIndex(); event.accepted = true }
                         else if (event.key === Qt.Key_Up) { list.decrementCurrentIndex(); event.accepted = true }
                         else if (event.key === Qt.Key_PageDown) { list.currentIndex = Math.min(list.count - 1, list.currentIndex + 8); event.accepted = true }

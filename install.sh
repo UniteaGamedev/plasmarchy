@@ -32,19 +32,19 @@ step() { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m  ! %s\033[0m\n' "$*"; }
 k() { kwriteconfig6 --file "$@"; }
 
-[ "$(id -u)" -ne 0 ] || { t "Please run without sudo - the installer asks for the password itself."; exit 1; }
+[ "$(id -u)" -ne 0 ] || { t "Please run without sudo. The installer asks for the password itself."; exit 1; }
 command -v plasmashell >/dev/null && [ "$(plasmashell --version 2>/dev/null | grep -o '[0-9]*' | head -1)" -ge 6 ] \
     || { t "Plasmarchy needs KDE Plasma 6."; exit 1; }
-[ "${XDG_SESSION_TYPE:-}" = wayland ] || warn "$(t "No Wayland session detected - the automatic screensaver needs Wayland.")"
+[ "${XDG_SESSION_TYPE:-}" = wayland ] || warn "$(t "No Wayland session detected. The automatic screensaver needs Wayland.")"
 
 # --- 1. Packages ---------------------------------------------------------------------------------
 if [ "$PACKAGES" = 1 ]; then
     step "$(t "Installing packages")"
     pkgs=(python qt6-declarative qt6-imageformats kimageformats imagemagick papirus-icon-theme
-          ttf-jetbrains-mono-nerd swayidle alacritty kdialog)
+          ttf-jetbrains-mono-nerd swayidle alacritty kdialog spotify-player)
     # Rounded window corners are packaged on CachyOS only (on Arch: AUR kwin-effect-rounded-corners-git)
     pacman -Si kwin-effect-rounded-corners >/dev/null 2>&1 && pkgs+=(kwin-effect-rounded-corners) \
-        || warn "$(t "kwin-effect-rounded-corners is not in the repositories - window corners stay square.")"
+        || warn "$(t "kwin-effect-rounded-corners is not in the repositories, window corners stay square.")"
     sudo pacman -S --needed "${pkgs[@]}"
 fi
 
@@ -73,6 +73,10 @@ done
 [ -f "$CONF_DIR/assistant.conf" ] || cp "$SRC/config/assistant.conf" "$CONF_DIR/"
 cp "$SRC/systemd/plasmarchy-idle.service" "$HOME/.config/systemd/user/"
 cp "$SRC/systemd/plasmarchy-wake.service" "$HOME/.config/systemd/user/"
+# "Plasmarchy" page in System Settings (Appearance) - must be executable to be trusted
+mkdir -p "$HOME/.local/share/plasma/systemsettings/externalmodules"
+sed "s|@BIN@|$BIN|g" "$SRC/systemsettings/plasmarchy.desktop" > "$HOME/.local/share/plasma/systemsettings/externalmodules/plasmarchy.desktop"
+chmod +x "$HOME/.local/share/plasma/systemsettings/externalmodules/plasmarchy.desktop"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 # Conversation hotkey: keep the one chosen in the settings (updates must not reset it)
 hotkey="$(sed -n 's/^HOTKEY=//p' "$CONF_DIR/assistant.conf" 2>/dev/null | tr -d '"' | tail -1)"
@@ -87,7 +91,7 @@ if curl -fsSL -o "$tmp/colorizer.plasmoid" "$COLORIZER_URL"; then
     kpackagetool6 -t Plasma/Applet -u "$tmp/colorizer.plasmoid" >/dev/null 2>&1 \
         || kpackagetool6 -t Plasma/Applet -i "$tmp/colorizer.plasmoid" >/dev/null
 else
-    warn "$(t "Couldn't download Panel Colorizer - the top bar/dock will be styled without rounding/colors.")"
+    warn "$(t "Couldn't download Panel Colorizer. The top bar and dock will be styled without rounding and colors.")"
 fi
 # Our widgets and the animated wallpaper; translations are compiled from the JSON catalogs into each package
 for pkg in "$BASE"/plasmoids/*/; do
@@ -142,16 +146,24 @@ fi
 qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
 for e in magiclamp blur scale; do qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect "$e" >/dev/null 2>&1 || true; done
 qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect squash >/dev/null 2>&1 || true
+# Hot corner: top left opens the overview of all windows (also KDE's default - set explicitly)
+k kwinrc --group Effect-overview --key BorderActivate 9
 kquitapp6 krunner >/dev/null 2>&1 || true
 
 step "$(t "Tidying up System Settings (pages Plasmarchy controls are hidden)")"
-for kcm in kcm_lookandfeel kcm_colors kcm_desktoptheme kcm_kwindecoration kcm_icons; do
+# kcm_landingpage: KDE's "Quick Settings" offer KDE's global themes - Plasmarchy's own page replaces them
+for kcm in kcm_lookandfeel kcm_colors kcm_desktoptheme kcm_kwindecoration kcm_icons kcm_landingpage; do
     k kdeglobals --group "KDE Control Module Restrictions" --key "$kcm" false
 done
 
 # --- 7. Theme, panels, screensaver --------------------------------------------------------------
 step "$(t "Applying theme")"
 current="$(head -1 "$STATE_DIR/current" 2>/dev/null || true)"
+# The active theme moved to the catalog (or was installed from it): install it from this checkout
+if [ -n "$current" ] && [ ! -d "$BASE/themes/$current" ] && [ -d "$SRC/extra-themes/$current" ] \
+        && [ ! -d "${XDG_CONFIG_HOME:-$HOME/.config}/plasmarchy/themes/$current" ]; then
+    python3 -I "$BASE/lib/themestore.py" install "$current" --from "$SRC/extra-themes" >/dev/null
+fi
 "$BIN" theme "${current:-$DEFAULT_THEME}"
 
 if [ "$LAYOUT" = 1 ]; then
@@ -162,7 +174,7 @@ else
 fi
 
 step "$(t "Setting up the screensaver")"
-"$BIN" screensaver setup >/dev/null || warn "$(t "Screensaver setup failed - retry with: {0}" "plasmarchy screensaver setup")"
+"$BIN" screensaver setup >/dev/null || warn "$(t "Screensaver setup failed. Retry with: {0}" "plasmarchy screensaver setup")"
 step "$(t "Enabling the idle screensaver")"
 systemctl --user daemon-reload
 systemctl --user enable plasmarchy-idle.service >/dev/null 2>&1
@@ -177,7 +189,7 @@ t "$(cat <<'EOF'
   Logo:              menu "Style"  or  plasmarchy branding
   AI assistant:      robot icon top right  or  Meta+A
   Talk to your PC:   {0} (press again to send, say "stop" to end)
-  Music player:      top left, appears while something plays
+  Music player:      top left, with Spotify built in (plasmarchy music setup)
   Voice (optional, ~650 MB, local):     plasmarchy voice setup
   Local AI (optional, fallback AI):     plasmarchy llm setup
   Undo:              {1}

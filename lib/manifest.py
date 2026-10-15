@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from plasmarchy_common import (CACHE, FOLDER_COLORS, PALETTE_KEYS, backgrounds, display_name,  # noqa: E402
-                               is_builtin_theme, is_user_theme, load_colors, load_kde_conf, theme_dir, themes)
+                               is_builtin_theme, is_extra_theme, is_user_theme, load_colors, load_kde_conf, theme_dir, themes)
 
 THUMBS = os.path.join(CACHE, "thumbs")
 
@@ -40,6 +40,7 @@ def main():
             "light": c["mode"] == "light",
             "user": is_user_theme(slug),
             "builtin": is_builtin_theme(slug),
+            "extra": is_extra_theme(slug),
             "folder": load_kde_conf(slug).get("FOLDER_COLOR", "blue"),
             "animation": load_kde_conf(slug).get("ANIMATION", ""),
             "palette": {k: c[k] for k in PALETTE_KEYS if k in c},

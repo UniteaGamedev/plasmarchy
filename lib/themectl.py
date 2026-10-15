@@ -4,7 +4,7 @@
   themectl.py path <slug>                  theme directory
   themectl.py backgrounds <slug>           wallpapers, one per line
   themectl.py info <slug>                  mode=..., folder=..., name=...
-  themectl.py list                         slug<TAB>name<TAB>custom|built-in
+  themectl.py list                         slug<TAB>name<TAB>custom|catalog|built-in
   themectl.py new <name> [template]        create a custom theme from a template, prints the slug
   themectl.py save <slug> <file.json>      save a custom theme from JSON (used by the Theme Studio)
   themectl.py delete <slug>                delete a custom theme (built-in themes are protected)
@@ -18,7 +18,7 @@ import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from plasmarchy_common import (FOLDER_COLORS, PALETTE_KEYS, USER_THEMES, XDG_DATA, backgrounds,  # noqa: E402
-                               display_name, is_builtin_theme, is_user_theme, load_colors, load_kde_conf,
+                               display_name, is_builtin_theme, is_extra_theme, is_user_theme, load_colors, load_kde_conf,
                                scheme_id, theme_dir, themes)
 from i18n import tr  # noqa: E402
 
@@ -56,7 +56,7 @@ def write_theme(slug, name, mode, folder, palette, bgs, animation=""):
                 f.write(f'{k} = "{palette[k]}"\n')
     with open(os.path.join(d, "kde.conf"), "w") as f:
         f.write(f'NAME="{name}"\nFOLDER_COLOR={folder}\n')
-        if animation in ("aurora", "particles", "rain"):
+        if animation in ("aurora", "particles", "rain", "logo"):
             f.write(f"ANIMATION={animation}\n")
     with open(os.path.join(d, "backgrounds.list"), "w") as f:
         f.write("".join(os.path.expanduser(b) + "\n" for b in bgs if os.path.isfile(os.path.expanduser(b))))
@@ -89,8 +89,21 @@ def cmd_save(slug, path):
 
 
 def cmd_delete(slug):
+    if not is_user_theme(slug) and is_extra_theme(slug):   # catalog theme: uninstall it
+        from plasmarchy_common import current_theme
+        if slug == current_theme():
+            raise SystemExit(tr("The active theme can't be removed. Switch to another theme first."))
+        import themestore
+        themestore.cmd_remove(slug)
+        return
     if not is_user_theme(slug):
-        raise SystemExit(tr("'{0}' is a built-in theme and cannot be deleted", slug))
+        # built-in: hide it; "More themes" offers it again
+        from plasmarchy_common import current_theme, set_hidden
+        if slug == current_theme():
+            raise SystemExit(tr("The active theme can't be removed. Switch to another theme first."))
+        set_hidden(slug, True)
+        print(slug)
+        return
     shutil.rmtree(os.path.join(USER_THEMES, slug))
     for f in (os.path.join(XDG_DATA, "color-schemes", scheme_id(slug) + ".colors"),
               os.path.join(XDG_DATA, "konsole", scheme_id(slug) + ".colorscheme")):
@@ -112,7 +125,8 @@ def main():
         print(f"mode={c['mode']}\nfolder={load_kde_conf(args[0]).get('FOLDER_COLOR', '')}\nname={display_name(args[0])}")
     elif cmd == "list":
         for slug in themes():
-            print(f"{slug}\t{display_name(slug)}\t{tr('custom') if is_user_theme(slug) else tr('built-in')}")
+            kind = tr("custom") if is_user_theme(slug) else tr("catalog") if is_extra_theme(slug) else tr("built-in")
+            print(f"{slug}\t{display_name(slug)}\t{kind}")
     elif cmd == "new":
         cmd_new(*args[:2])
     elif cmd == "save":

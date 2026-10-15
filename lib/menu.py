@@ -21,7 +21,7 @@ CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.join(HOME, ".cache
 APP_DIRS = [os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share")), "applications"),
             "/usr/share/applications", "/var/lib/flatpak/exports/share/applications",
             os.path.join(HOME, ".local/share/flatpak/exports/share/applications")]
-P = "plasmarchy"
+P = os.path.expanduser("~/.local/bin/plasmarchy")   # absolute: Plasma's PATH lacks ~/.local/bin
 
 
 def kcm(name):
@@ -49,8 +49,10 @@ def menu():
             {"id": "idle", "icon": g(0xF04B2), "label": tr("Automatic screensaver"), "cmd": f"{P} toggle idle"},
         ]},
         {"id": "style", "icon": g(0xF03D8), "label": tr("Style"), "items": [
-            {"id": "theme", "icon": g(0xF03D8), "label": tr("Theme"), "cmd": f"{P} pick"},
-            {"id": "studio", "icon": g(0xF00E3), "label": "Theme Studio", "cmd": f"{P} studio"},
+            {"id": "theme", "icon": g(0xF03D8), "label": tr("Switch theme"), "cmd": f"{P} pick", "boost": 30,
+             "keywords": "theme design look colors farben"},
+            {"id": "studio", "icon": g(0xF00E3), "label": "Theme Studio", "cmd": f"{P} studio", "boost": 10,
+             "keywords": "theme editor colors farben"},
             {"id": "background", "icon": g(0xF0E09), "label": tr("Next wallpaper"), "cmd": f"{P} next-bg"},
             {"id": "logo-text", "icon": g(0xF0284), "label": tr("Logo: text …"), "cmd": f"{P} branding ask-text"},
             {"id": "logo-image", "icon": g(0xF02E9), "label": tr("Logo: image …"), "cmd": f"{P} branding ask-image"},
@@ -115,8 +117,8 @@ def apps():
     for d in APP_DIRS:
         for f in sorted(glob.glob(os.path.join(d, "**", "*.desktop"), recursive=True)):
             did = os.path.relpath(f, d).replace("/", "-")
-            if did in seen:   # user entries override system ones
-                continue
+            if did in seen or did.startswith("plasmarchy-"):   # user entries override system ones;
+                continue                                         # our own entries are already in the menu
             seen.add(did)
             c = configparser.ConfigParser(interpolation=None, strict=False)
             c.optionxform = str

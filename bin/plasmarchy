@@ -5,9 +5,11 @@
 #   plasmarchy menu                 open the Plasmarchy menu (Windows key)
 #   plasmarchy toggle <feature>     player | animated | nightlight | idle
 #   plasmarchy theme <name>         apply a theme (e.g. osaka-jade)
-#   plasmarchy themes               list available themes
+#   plasmarchy themes               list installed themes
+#   plasmarchy themes available     themes in the catalog (* = installed); install|remove <name>
 #   plasmarchy next-bg              next wallpaper of the active theme
-#   plasmarchy studio               Theme Studio: create, edit and delete your own themes
+#   plasmarchy studio [catalog]     Theme Studio: create, edit and delete your own themes (catalog: more themes)
+#   plasmarchy configure            Plasmarchy settings (also in System Settings → Appearance)
 #   plasmarchy restore              go back to the look from before Plasmarchy
 #   plasmarchy screensaver          start the screensaver now (setup: install it)
 #   plasmarchy branding             show/change the logo (text "Name" | image <file> | edit)
@@ -16,6 +18,7 @@
 #   plasmarchy ask "<question>"     ask the AI assistant (connected AI, e.g. Claude Code)
 #   plasmarchy voice setup          set up voice (local speech recognition + text-to-speech)
 #   plasmarchy talk                 start/stop a conversation (default hotkey Meta+Shift+Space)
+#   plasmarchy music setup [youtube] built-in Spotify player (Premium) or YouTube Music: install (+ sign in)
 #   plasmarchy settings             assistant settings (get | set KEY VALUE)
 #   plasmarchy llm setup            set up a local language model (Ollama; fallback and offline AI)
 #   plasmarchy app <name>           launch an app by name (also used by the assistant)
@@ -133,7 +136,8 @@ run_hooks() {        # scripts in hooks.d get the theme as argument
 }
 
 apply_theme() {      # $1 theme, $2 wallpaper index (optional)
-    local slug="$1" idx="${2:-0}" sid
+    local slug="$1" idx="${2:-0}" sid previous
+    previous="$(current_theme)"
     themectl path "$slug" >/dev/null || exit 1
     backup_once
     sid="$(scheme_id "$slug")"
@@ -156,7 +160,12 @@ apply_theme() {      # $1 theme, $2 wallpaper index (optional)
 
     mapfile -t bgs < <(themectl backgrounds "$slug")
     [ "${#bgs[@]}" -gt 0 ] && [ -n "${bgs[0]}" ] && idx=$(( idx % ${#bgs[@]} ))
-    if [ -n "$(py animated.py apply "$slug")" ]; then
+    # Own wallpaper (Plasmarchy settings) wins over the theme's images and animations
+    local override
+    override="$(sed -n 's/^OVERRIDE=//p' "$CONF_DIR/wallpaper.conf" 2>/dev/null | tr -d '"' | tail -1)"
+    if [ -n "$override" ] && [ -f "$override" ]; then
+        set_wallpaper "$override"
+    elif [ -n "$(py animated.py apply "$slug")" ]; then
         # Animated wallpaper on the desktop; the lock screen keeps a still image
         [ -n "${bgs[0]:-}" ] && kwriteconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper \
             --group org.kde.image --group General --key Image "file://$(cached_wallpaper "${bgs[$idx]}")"
@@ -166,11 +175,19 @@ apply_theme() {      # $1 theme, $2 wallpaper index (optional)
     mkdir -p "$STATE_DIR"
     printf '%s\n%s\n' "$slug" "$idx" > "$STATE"
     run_hooks "$slug"
+    # Themes can greet you when you switch to them (kde.conf GREETING_*), e.g. Cachy Matrix's Morpheus
+    if [ "$previous" != "$slug" ]; then
+        local kconf greet
+        kconf="$(themectl path "$slug")/kde.conf"
+        greet="$(sed -n 's/^GREETING_TITLE=//p' "$kconf" 2>/dev/null | tr -d '"')"
+        [ -n "$greet" ] && notify-send -a "$(sed -n 's/^GREETING_FROM=//p' "$kconf" | tr -d '"')" -i user-identity \
+            "$greet" "$(sed -n 's/^GREETING_TEXT=//p' "$kconf" | tr -d '"')" 2>/dev/null || true
+    fi
     echo "Theme: $slug"
 }
 
 restore() {
-    [ -f "$BACKUP" ] || die "$(t "No backup yet - no theme has been applied.")"
+    [ -f "$BACKUP" ] || die "$(t "No backup yet. No theme has been applied.")"
     # shellcheck disable=SC1090
     source "$BACKUP"
     [ -n "$COLORSCHEME" ] && plasma-apply-colorscheme "$COLORSCHEME" >/dev/null
@@ -227,7 +244,7 @@ studio() {           # Theme Studio: QML reports actions line by line; we run th
     local status="$RUN/plasmarchy-studio-status.json"
     echo '{"seq":0,"ok":true,"verb":"","message":""}' > "$status"
     local seq=0
-    qml_run "$LIB/studio.qml" -- "$RUN/plasmarchy-themes.json" "$status" | while IFS= read -r line; do
+    qml_run "$LIB/studio.qml" -- "$RUN/plasmarchy-themes.json" "$status" ${1:+"$1"} | while IFS= read -r line; do
         case "$line" in *PLASMARCHY_ACTION=*) ;; *) continue ;; esac
         local action="${line#*PLASMARCHY_ACTION=}" verb arg result ok=true msg=""
         verb="${action%% *}"; arg="${action#* }"
@@ -240,6 +257,18 @@ studio() {           # Theme Studio: QML reports actions line by line; we run th
                     else ok=false; msg="$result"; fi ;;
             new)    template="$(current_theme)"; [ -n "$template" ] || template=osaka-jade
                     if result="$(themectl new "$arg" "$template" 2>&1)"; then msg="$(t "Created: {0}" "$result")"
+                    else ok=false; msg="$result"; fi ;;
+            catalog)     # theme catalog for the "More themes" dialog
+                    if py themestore.py list > "$RUN/plasmarchy-catalog.json"; then msg=""
+                    else ok=false; msg="$(t "Theme catalog unavailable ({0})" "network")"; fi ;;
+            install|uninstall)
+                    if [ "$verb" = install ]; then result="$(py themestore.py install "$arg" 2>&1)" && msg="$(t "Installed: {0}" "$arg")" || { ok=false; msg="$result"; }
+                    else result="$(py themestore.py remove "$arg" 2>&1)" && msg="$(t "Uninstalled: {0}" "$arg")" || { ok=false; msg="$result"; }; fi
+                    py themestore.py list > "$RUN/plasmarchy-catalog.json" 2>/dev/null
+                    result="" ;;
+            duplicate)   # editable copy of a (built-in) theme
+                    name="$(t "{0} (copy)" "$(themectl info "$arg" | sed -n 's/^name=//p')")"
+                    if result="$(themectl new "$name" "$arg" 2>&1)"; then msg="$(t "Created: {0}" "$result")"
                     else ok=false; msg="$result"; fi ;;
             delete) if result="$(themectl delete "$arg" 2>&1)"; then msg="$(t "Deleted: {0}" "$result")"
                     else ok=false; msg="$result"; fi ;;
@@ -315,6 +344,28 @@ branding() {         # logo for screensaver and animated wallpapers
     esac
 }
 
+configure() {        # Plasmarchy settings window: QML reports changes, we apply them and report back
+    local cfgfile="$RUN/plasmarchy-config.json" status="$RUN/plasmarchy-config-status.json" seq=0
+    py config.py get > "$cfgfile"
+    echo '{"seq":0}' > "$status"
+    qml_run "$LIB/settings_app.qml" -- "$cfgfile" "$status" | while IFS= read -r line; do
+        local ok=true msg="" key val
+        case "$line" in
+            *PLASMARCHY_SET=*)
+                line="${line#*PLASMARCHY_SET=}"; key="${line%%$'\t'*}"; val="$(printf '%s' "${line#*$'\t'}" | base64 -d)"
+                if out="$(py config.py set "$key" "$val" 2>&1)"; then msg="$(t "Saved")"; else ok=false; msg="${out##*$'\n'}"; fi ;;
+            *PLASMARCHY_RUN=*)
+                # only Plasmarchy's own commands
+                (PATH="$HOME/.local/bin:$PATH" setsid "$0" ${line#*PLASMARCHY_RUN=} >/dev/null 2>&1 &)
+                continue ;;
+            *) continue ;;
+        esac
+        seq=$((seq + 1))
+        py config.py get | python3 -I -c 'import json,sys; c=json.load(sys.stdin); json.dump({"seq":int(sys.argv[1]),"ok":sys.argv[2]=="true","message":sys.argv[3],"config":c}, open(sys.argv[4],"w"))' \
+            "$seq" "$ok" "$msg" "$status"
+    done
+}
+
 menu() {             # Omarchy-style menu (Windows key): main entries, search, apps
     local data="$RUN/plasmarchy-menu.json" cmd pidfile="$RUN/plasmarchy-menu.pid" other
     # Pressed again while open: close it
@@ -326,7 +377,7 @@ menu() {             # Omarchy-style menu (Windows key): main entries, search, a
     cmd="$(QT_FORCE_STDERR_LOGGING=1 QML_XHR_ALLOW_FILE_READ=1 "$QML" "$LIB/menu.qml" -- "$data" 2>&1 & echo $! > "$pidfile"; wait)"
     cmd="$(printf '%s\n' "$cmd" | sed -n 's/^.*PLASMARCHY_MENU=//p' | tail -1)"
     rm -f "$pidfile"
-    [ -n "$cmd" ] && (setsid bash -c "$cmd" >/dev/null 2>&1 &)
+    [ -n "$cmd" ] && (PATH="$HOME/.local/bin:$PATH" setsid bash -c "$cmd" >/dev/null 2>&1 &)
     return 0
 }
 
@@ -451,9 +502,15 @@ idle() {             # service: screensaver after TIMEOUT_MIN minutes idle (sway
 case "${1:-pick}" in
     pick)           pick ;;
     theme|set)      apply_theme "${2:?theme name missing (see: plasmarchy themes)}" ;;
-    themes|list)    themectl list ;;
+    themes|list)    case "${2:-}" in
+                        available) py themestore.py list | python3 -I -c 'import json,sys; [print(("* " if t["installed"] else "  ") + t["slug"].ljust(16) + t["name"] + ("  (animated)" if t["animation"] else "")) for t in json.load(sys.stdin)["themes"]]' ;;
+                        install)   py themestore.py install "${3:?}" ;;
+                        remove)    py themestore.py remove "${3:?}" ;;
+                        *)         themectl list ;;
+                    esac ;;
     next-bg)        next_bg ;;
-    studio)         studio ;;
+    studio)         studio "${2:-}" ;;
+    configure)      configure ;;
     restore)        restore ;;
     screensaver)    if [ "${2:-}" = setup ]; then screensaver_setup; else screensaver "${2:-}"; fi ;;
     branding)       branding "${@:2}" ;;
@@ -473,6 +530,13 @@ case "${1:-pick}" in
     assistant)      if [ "${2:-}" = open ]; then assistant_open; else py assistant.py "${@:2}"; fi ;;
     voice)          py voice.py "${@:2}" ;;
     talk)           py talk.py ;;
+    music)          case "${2:-}" in
+                        setup)          if [ "${3:-}" = youtube ]; then terminal "sudo pacman -S --needed yt-dlp mpv-mpris"
+                                        else terminal "sudo pacman -S --needed spotify-player && $0 music login"; fi ;;
+                        open-terminal)  (alacritty 2>/dev/null || konsole) >/dev/null 2>&1 & ;;
+                        login-terminal) terminal "$0 music login" ;;
+                        *)              py music.py "${@:2}" ;;
+                    esac ;;
     settings)       py settings.py "${@:2}" ;;
     llm)            [ "${2:-}" = setup ] && llm_setup || die "usage: plasmarchy llm setup" ;;
     app)            app "${@:2}" ;;
