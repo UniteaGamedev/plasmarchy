@@ -14,6 +14,7 @@ radio (YouTube mix) so next/previous work. The widget shows/controls both throug
   music.py play <kind> <id>         Spotify: track | playlist | album | artist | liked
   music.py yt-search <query>        JSON: songs on YouTube Music
   music.py yt-play <id|url>         play a song (as a radio) or a YouTube/YouTube Music link
+  music.py yt-now                   JSON: cover of the song our mpv plays
 """
 import glob
 import json
@@ -155,12 +156,41 @@ def yt_search(query):
 
 
 def mpv_command(*cmd):
+    """Send a command to our mpv and return its "data" (None if there is none)."""
     import socket
     s = socket.socket(socket.AF_UNIX)
     s.settimeout(3)
     s.connect(MPV_SOCKET)
-    s.sendall((json.dumps({"command": list(cmd)}) + "\n").encode())
-    s.close()
+    s.sendall((json.dumps({"command": list(cmd), "request_id": 1}) + "\n").encode())
+    buf = b""
+    try:
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            for line in buf.split(b"\n"):
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if msg.get("request_id") == 1:
+                    return msg.get("data")
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def yt_now():
+    """Cover of the song our mpv plays (mpv doesn't report one for YouTube streams): from the video id."""
+    import urllib.parse
+    try:
+        path = mpv_command("get_property", "path") or ""
+    except OSError:
+        return {"image": ""}
+    vid = (urllib.parse.parse_qs(urllib.parse.urlparse(path).query).get("v") or [""])[0]
+    return {"id": vid, "image": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg" if vid else ""}
 
 
 def yt_play(target):
@@ -176,7 +206,7 @@ def yt_play(target):
         plugin = mpris_plugin()
         if plugin and not plugin.startswith("/etc/mpv/scripts") and "/.config/mpv/scripts" not in plugin:
             args.append(f"--script={plugin}")   # not in an auto-loaded scripts folder
-        subprocess.Popen(args + [url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        spawn(args + [url], "mpv")
     return {"ok": True}
 
 
@@ -184,8 +214,7 @@ def start():
     if not binary():
         raise SystemExit(tr("spotify-player is not installed (sudo pacman -S spotify-player)"))
     if not running():
-        subprocess.Popen([binary(), "--daemon", "-o", f'device.name="{DEVICE}"', "-o", "device.volume=80"],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        spawn([binary(), "--daemon", "-o", f'device.name="{DEVICE}"', "-o", "device.volume=80"], "spotify", forking=True)
         for _ in range(30):   # until the daemon answers
             time.sleep(0.3)
             if sp(["get", "key", "devices"], timeout=5, check=False) is not None:
@@ -268,6 +297,19 @@ def play(kind, item_id):
     return {"ok": True}
 
 
+def spawn(args, name, forking=False):
+    """Start a player in its own systemd unit: started from the widget it would otherwise belong to plasmashell's
+    service, and every Plasma restart would stop the music."""
+    if shutil.which("systemd-run"):
+        unit = f"plasmarchy-{name}-{int(time.time())}"
+        extra = ["--property=Type=forking"] if forking else []   # spotify_player --daemon forks itself
+        if subprocess.run(["systemd-run", "--user", "--quiet", "--collect", f"--unit={unit}", *extra, *args],
+                          capture_output=True).returncode == 0:
+            return
+    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                     start_new_session=True)
+
+
 def stop():
     subprocess.run(["pkill", "-x", "spotify_player"], capture_output=True)
     for _ in range(20):
@@ -284,9 +326,7 @@ def login():
     stop()
     if subprocess.run([binary(), "authenticate"]).returncode != 0:
         raise SystemExit(tr("Spotify command failed"))
-    subprocess.Popen([binary(), "--daemon", "-o", f'device.name="{DEVICE}"', "-o", "device.volume=80"],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
-                     start_new_session=True)
+    spawn([binary(), "--daemon", "-o", f'device.name="{DEVICE}"', "-o", "device.volume=80"], "spotify", forking=True)
     for _ in range(120):
         if authenticated():
             print(tr("Spotify is connected. You can close this window."))
@@ -336,6 +376,8 @@ def main():
         elif cmd == "yt-search64" and len(a) == 2:   # from the widget
             import base64
             result = yt_search(base64.b64decode(a[1]).decode("utf-8"))
+        elif cmd == "yt-now":
+            result = yt_now()
         elif cmd == "yt-play" and len(a) == 2:
             result = yt_play(a[1])
         elif cmd == "play" and len(a) >= 2:

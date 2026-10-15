@@ -18,7 +18,49 @@ PlasmoidItem {
 
     readonly property string mono: "JetBrainsMono Nerd Font"
     readonly property string bin: "\"$HOME/.local/bin/plasmarchy\""
-    readonly property var player: mpris.currentPlayer
+    // The player to show: we pick it ourselves instead of Plasma's automatic choice, because an idle Spotify
+    // daemon reports "Playing" without any song and would hide the music that really plays. Only players with
+    // a song count; a playing one wins over a paused one; a tab the user clicked wins over both.
+    property int playersRev: 0
+    property int chosenIndex: -1
+    Instantiator {
+        id: allPlayers
+        model: mpris
+        delegate: Item {
+            required property var container
+            required property bool isMultiplexer
+            required property int index
+            readonly property string track: container ? container.track : ""
+            readonly property int status: container ? container.playbackStatus : 0
+            onTrackChanged: root.playersRev++
+            onStatusChanged: root.playersRev++
+        }
+        onObjectAdded: root.playersRev++
+        onObjectRemoved: root.playersRev++
+    }
+    readonly property var pick: {
+        playersRev
+        var best = null, bestIndex = -1, bestScore = -1
+        for (var i = 0; i < allPlayers.count; i++) {
+            var o = allPlayers.objectAt(i)
+            if (!o || o.isMultiplexer || !o.container || o.track === "") continue
+            var score = (o.status === Mpris.PlaybackStatus.Playing ? 2 : 1) + (i === chosenIndex ? 4 : 0)
+            if (score > bestScore) { best = o.container; bestIndex = i; bestScore = score }
+        }
+        var withSong = 0
+        for (var j = 0; j < allPlayers.count; j++) {
+            var p = allPlayers.objectAt(j)
+            if (p && !p.isMultiplexer && p.container && p.track !== "") withSong++
+        }
+        return { player: best, index: bestIndex, count: withSong }
+    }
+    readonly property var player: pick.player
+    // our mpv (YouTube Music) reports no cover: ask for it whenever the song changes
+    readonly property bool ownYoutube: !!player && player.identity === "mpv" && !!spotify.youtube && !!spotify.youtube.running
+    property string ytCover: ""
+    readonly property string coverUrl: player && player.artUrl ? player.artUrl : ownYoutube ? ytCover : ""
+    onTitleChanged: if (ownYoutube) run("yt-now")
+    onOwnYoutubeChanged: if (ownYoutube) run("yt-now")
     readonly property bool hasPlayer: !!player && player.track !== ""   // an idle player (e.g. Spotify's daemon) doesn't count
     readonly property bool playing: !!player && player.playbackStatus === Mpris.PlaybackStatus.Playing
     readonly property string show: Plasmoid.configuration.show
@@ -86,6 +128,7 @@ PlasmoidItem {
             else if (source.indexOf(" music playlists") >= 0) { if (out && out.items) root.library = out.items; root.busy = "" }
             else if (source.indexOf(" music search64 ") >= 0) { if (out && !out.error) root.results = out; root.busy = "" }
             else if (source.indexOf(" music yt-search64 ") >= 0) { if (out && out.items) root.ytResults = out.items; root.busy = "" }
+            else if (source.indexOf(" music yt-now") >= 0) { if (out) root.ytCover = out.image || "" }
             else if (source.indexOf(" music play ") >= 0 || source.indexOf(" music yt-play ") >= 0) { root.busy = ""; root.run("status") }
         }
     }
@@ -199,28 +242,24 @@ PlasmoidItem {
 
         header: PlasmaExtras.PlasmoidHeading {
             // only when more than one player has something loaded (an idle Spotify daemon doesn't count)
-            visible: players.active > 1
+            visible: root.pick.count > 1
             RowLayout {
                 anchors.fill: parent
                 PC3.TabBar {
                     Layout.fillWidth: true
-                    currentIndex: Math.max(0, mpris.currentIndex - 1)
+                    currentIndex: Math.max(0, root.pick.index)
                     Repeater {
                         id: players
-                        property int active: 0
                         model: mpris
                         delegate: PC3.TabButton {
                             required property var container
                             required property bool isMultiplexer
                             required property int index
                             readonly property bool shown: !isMultiplexer && !!container && container.track !== ""
-                            onShownChanged: players.active += shown ? 1 : -1
-                            Component.onCompleted: if (shown) players.active += 1
-                            Component.onDestruction: if (shown) players.active -= 1
                             visible: shown
                             width: shown ? implicitWidth : 0
                             text: container ? root.niceName(container.identity) : ""
-                            onClicked: mpris.currentIndex = index
+                            onClicked: root.chosenIndex = index
                         }
                     }
                 }
@@ -245,7 +284,7 @@ PlasmoidItem {
                     Image {
                         id: cover
                         anchors.fill: parent
-                        source: root.player ? root.player.artUrl : ""
+                        source: root.coverUrl
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
                         visible: status === Image.Ready
