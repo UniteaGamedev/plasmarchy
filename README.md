@@ -43,7 +43,7 @@ Options: `--no-layout` (don't touch the panels/dock), `--no-packages` (no packag
 | **Branding** | One logo for screensaver and animated wallpapers: a text, an image (SVG/PNG) or hand-edited ASCII art in `~/.config/plasmarchy/branding/` (Menu → Style, or `plasmarchy branding`) |
 | **Tidy System Settings** | Pages Plasmarchy controls (Global Theme, Colors, Plasma Style, Window Decorations, Icons, KDE's Quick Settings) are hidden there |
 
-The interface follows the system language. Translations for 19+ languages are included (missing languages fall back to English).
+The interface follows the system language. Translations for 20 languages are included (missing languages fall back to English).
 
 ## Usage
 

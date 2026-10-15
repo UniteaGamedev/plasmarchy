@@ -43,7 +43,7 @@ Optionen: `--no-layout` (Leisten/Dock nicht anfassen), `--no-packages` (keine Pa
 | **Branding** | Ein Logo für Screensaver und animierte Hintergründe: Text, Bild (SVG/PNG) oder selbst bearbeitete ASCII-Grafik in `~/.config/plasmarchy/branding/` (Menü → Stil, oder `plasmarchy branding`) |
 | **Aufgeräumte Systemeinstellungen** | Was Plasmarchy steuert (Globales Design, Farben, Plasma-Stil, Fensterdekoration, Symbole, KDEs Schnelleinstellungen), wird dort ausgeblendet |
 
-Die Oberfläche folgt der Systemsprache. Übersetzungen für über 19 Sprachen sind enthalten (fehlende Sprachen fallen auf Englisch zurück).
+Die Oberfläche folgt der Systemsprache. Übersetzungen für 20 Sprachen sind enthalten (fehlende Sprachen fallen auf Englisch zurück).
 
 ## Bedienung
 
