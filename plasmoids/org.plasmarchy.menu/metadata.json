@@ -1,0 +1,23 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Plasmarchy"
+            }
+        ],
+        "Category": "Application Launchers",
+        "Description": "Opens the Plasmarchy menu (also with the Windows key)",
+        "Description[de]": "Öffnet das Plasmarchy-Menü (auch mit der Windows-Taste)",
+        "Icon": "start-here-kde",
+        "Id": "org.plasmarchy.menu",
+        "License": "MIT",
+        "Name": "Plasmarchy Menu",
+        "Name[de]": "Plasmarchy-Menü",
+        "Version": "1.0"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-Provides": [
+        "org.kde.plasma.launchermenu"
+    ]
+}

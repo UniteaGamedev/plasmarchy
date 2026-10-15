@@ -98,6 +98,9 @@ for pkg in "$BASE"/plasmoids/*/; do
     for cat in "$BASE"/lib/locale/*.json; do
         lang=$(basename "$cat" .json)
         python3 -I "$BASE/lib/i18n.py" build-mo "$lang" "$pkg/contents/locale/$lang/LC_MESSAGES/$domain.mo"
+        # also in the standard location - Plasma doesn't look inside wallpaper packages
+        mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/locale/$lang/LC_MESSAGES"
+        cp "$pkg/contents/locale/$lang/LC_MESSAGES/$domain.mo" "${XDG_DATA_HOME:-$HOME/.local/share}/locale/$lang/LC_MESSAGES/"
     done
     kpackagetool6 -t "$type" -u "$pkg" >/dev/null 2>&1 || kpackagetool6 -t "$type" -i "$pkg" >/dev/null
 done
@@ -126,8 +129,8 @@ k kwinrc --group Desktops --key Rows 1
 # The Windows key opens the Plasmarchy menu (Omarchy-style); KRunner stays reachable from its search
 k krunnerrc --group General --key FreeFloating true
 kwriteconfig6 --file kglobalshortcutsrc --group services --group plasmarchy-menu.desktop --key _launch "Meta+Alt+Space"
-k kwinrc --group ModifierOnlyShortcuts --key Meta \
-    "org.kde.kglobalaccel,/component/plasmarchy_menu_desktop,org.kde.kglobalaccel.Component,invokeShortcut,_launch"
+# Plasma's default Windows-key action opens the launcher of the panel - that's our menu button
+k kwinrc --group ModifierOnlyShortcuts --key Meta --delete
 if pacman -Q kwin-effect-rounded-corners >/dev/null 2>&1; then
     # only the effect plugin, not its settings page (effects/configs/...)
     so="$(pacman -Ql kwin-effect-rounded-corners | awk '/\/effects\/plugins\/.*\.so$/{print $2}' | head -1)"
@@ -154,6 +157,8 @@ current="$(head -1 "$STATE_DIR/current" 2>/dev/null || true)"
 if [ "$LAYOUT" = 1 ]; then
     step "$(t "Setting up the top bar and dock")"
     "$BIN" layout
+else
+    python3 -I "$BASE/lib/layout.py" migrate   # update an existing top bar (menu button, AI in the tray)
 fi
 
 step "$(t "Setting up the screensaver")"
@@ -170,7 +175,7 @@ t "$(cat <<'EOF'
   Switch theme:      menu "Style"  or  plasmarchy
   Theme Studio:      menu "Style"  or  plasmarchy studio
   Logo:              menu "Style"  or  plasmarchy branding
-  AI assistant:      robot icon top right  or  Meta+Shift+A
+  AI assistant:      robot icon top right  or  Meta+A
   Talk to your PC:   {0} (press again to send, say "stop" to end)
   Music player:      top left, appears while something plays
   Voice (optional, ~650 MB, local):     plasmarchy voice setup

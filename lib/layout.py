@@ -27,7 +27,7 @@ HIDDEN_TRAY = ["org.kde.kdeconnect", "org.kde.plasma.clipboard", "org.kde.kscree
                "org.kde.plasma.manage-inputmethod", "org.kde.plasma.weather", "org.kde.plasma.devicenotifier",
                "Cachy-Update", "unityhub_status_icon_1",
                "kded6"]   # KDE hints such as "Get Plasma Browser Integration"
-MASKED_TRAY = ["org.kde.plasma.bluetooth", "org.kde.plasma.battery", "org.kde.plasma.volume",
+MASKED_TRAY = ["org.plasmarchy.aiusage", "org.kde.plasma.bluetooth", "org.kde.plasma.battery", "org.kde.plasma.volume",
                "org.kde.plasma.networkmanagement", "org.kde.plasma.systemtray.expand"]
 DEFAULT_APPS = [["firefox.desktop", "chromium.desktop", "brave-browser.desktop", "zen.desktop"],
                 ["org.kde.dolphin.desktop"], ["org.kde.konsole.desktop"],
@@ -87,8 +87,8 @@ def main():
     // --- top bar ---
     var top = new Panel("org.kde.panel");
     top.location = "top"; top.height = 32; top.floating = false; top.hiding = "none";
-    var kick = top.addWidget("org.kde.plasma.kickoff");
-    kick.currentConfigGroup = ["General"]; kick.writeConfig("icon", "view-app-grid-symbolic");
+    var menu = top.addWidget("org.plasmarchy.menu");   // opens the Plasmarchy menu; Plasma's Windows-key action targets it
+    menu.globalShortcut = "Alt+F1";      // Plasma only hands the Windows key to launchers that have a shortcut
     {'top.addWidget("org.plasmarchy.music");  // music player, hides itself while nothing runs' if player_enabled() else ''}
     top.addWidget("org.kde.plasma.panelspacer");
     var clock = top.addWidget("org.kde.plasma.digitalclock");
@@ -102,8 +102,7 @@ def main():
     clock.writeConfig("dateFormat", "custom");
     clock.writeConfig("customDateFormat", "dddd");
     top.addWidget("org.kde.plasma.panelspacer");
-    var ai = top.addWidget("org.plasmarchy.aiusage");
-    ai.globalShortcut = "Meta+Shift+A";     // open the AI assistant from the keyboard
+    // the AI assistant lives in the system tray (shares the popup with Wi-Fi, Bluetooth, volume)
     var tray = top.addWidget("org.kde.plasma.systemtray");
     tray.currentConfigGroup = ["General"];
     tray.writeConfig("hiddenItems", {json.dumps(HIDDEN_TRAY + (["org.kde.plasma.mediacontroller"] if player_enabled() else []))});
@@ -134,16 +133,13 @@ def main():
     evaluate(f'''
         panels().forEach(p => {{
             if (p.location != "top") return;
-            var kick = p.widgets().filter(w => w.type == "org.kde.plasma.kickoff")[0];
             var force = {json.dumps(force)};
-            if (kick) force.widgets.push({{"name": "org.kde.plasma.kickoff", "id": kick.id,
-                                           "method": {{"mask": true, "multiEffect": false}}, "reload": false}});
             p.widgets().filter(w => w.type == "luisbocanegra.panel.colorizer").forEach(c => {{
                 c.currentConfigGroup = ["General"];
                 c.writeConfig("forceForegroundColor", JSON.stringify(force));
             }});
         }});''')
-    restart_plasma()
+    restart_plasma(before_start=tray_ai_shortcut)
     print(tr("Panels set up."))
 
 
@@ -184,7 +180,7 @@ def player(action):
                 if (p.location != "top") return;
                 var w = p.addWidget("org.plasmarchy.music");
                 var ids = p.widgets().filter(x => x.id != w.id).map(x => x.id);
-                var k = p.widgets().findIndex(x => x.type == "org.kde.plasma.kickoff");
+                var k = p.widgets().findIndex(x => x.type == "org.plasmarchy.menu" || x.type == "org.kde.plasma.kickoff");
                 ids.splice(k + 1, 0, w.id);   // right after the menu button
                 r = p.id + " " + ids.join(";");
             });
@@ -200,8 +196,97 @@ def player(action):
     print("on" if on else "off")
 
 
-def restart_plasma():
-    subprocess.run(["systemctl", "--user", "restart", "plasma-plasmashell"], check=False)
+def migrate():
+    """Bring an existing top bar up to date without rebuilding it: menu button instead of kickoff,
+    AI assistant in the system tray, music player next to the menu button. Safe to run repeatedly."""
+    out = evaluate('''
+        var r = "";
+        panels().forEach(p => {
+            if (p.location != "top") return;
+            var ws = p.widgets();
+            if (!ws.some(w => w.type == "org.plasmarchy.menu")) {
+                var m = p.addWidget("org.plasmarchy.menu");
+                m.globalShortcut = "Alt+F1";   // Plasma only hands the Windows key to launchers with a shortcut
+            }
+            ws.filter(w => w.type == "org.kde.plasma.kickoff" || w.type == "org.plasmarchy.aiusage").forEach(w => w.remove());
+            ws = p.widgets();
+            var menu = ws.filter(w => w.type == "org.plasmarchy.menu")[0].id;
+            var music = ws.filter(w => w.type == "org.plasmarchy.music").map(w => w.id);
+            var rest = ws.filter(w => w.type != "org.plasmarchy.menu" && w.type != "org.plasmarchy.music").map(w => w.id);
+            r = p.id + " " + [menu].concat(music, rest).join(";");
+            // Panel Colorizer: tint the AI icon in the tray like the other tray icons
+            ws.filter(w => w.type == "luisbocanegra.panel.colorizer").forEach(c => {
+                c.currentConfigGroup = ["General"];
+                try {
+                    var f = JSON.parse(c.readConfig("forceForegroundColor", "{}"));
+                    f.widgets = (f.widgets || []).filter(x => x.name != "org.kde.plasma.kickoff");
+                    if (!f.widgets.some(x => x.name == "org.plasmarchy.aiusage"))
+                        f.widgets.push({"name": "org.plasmarchy.aiusage", "id": -1, "method": {"mask": true, "multiEffect": false}, "reload": false});
+                    c.writeConfig("forceForegroundColor", JSON.stringify(f));
+                } catch (e) {}
+            });
+        });
+        print(r);''').strip()
+    # The Windows key uses Plasma's default action ("activate launcher menu") -> our menu button
+    subprocess.run(["kwriteconfig6", "--file", "kwinrc", "--group", "ModifierOnlyShortcuts", "--key", "Meta",
+                    "--delete"], check=False)
+    subprocess.run(["qdbus6", "org.kde.KWin", "/KWin", "reconfigure"], capture_output=True)
+    if not out:
+        return
+
+    def order():
+        panel, ids = out.split(" ", 1)
+        subprocess.run(["kwriteconfig6", "--file", APPLETSRC, "--group", "Containments", "--group", panel,
+                        "--group", "General", "--key", "AppletOrder", ids], check=False)
+    restart_plasma(before_start=order)        # the tray picks up the AI assistant on this start
+    restart_plasma(before_start=tray_ai_shortcut)
+
+
+AI_SHORTCUT = "Meta+A"   # like Omarchy's Super+A
+
+
+def free_activity_keys():
+    """Meta+A / Meta+Shift+A switch activities in KDE. With a single activity they do nothing, so they are
+    released for the AI assistant. Users with several activities keep them (and the AI assistant has none)."""
+    out = subprocess.run(["qdbus6", "org.kde.ActivityManager", "/ActivityManager/Activities",
+                          "org.kde.ActivityManager.Activities.ListActivities"], capture_output=True, text=True).stdout
+    if len(out.split()) > 1:
+        return False
+    for action, label in (("next activity", "Walk through activities"),
+                          ("previous activity", "Walk through activities (Reverse)")):
+        subprocess.run(["kwriteconfig6", "--file", "kglobalshortcutsrc", "--group", "plasmashell", "--key", action,
+                        f"none,none,{label}"], check=False)
+        subprocess.run(["busctl", "--user", "call", "org.kde.kglobalaccel", "/kglobalaccel", "org.kde.KGlobalAccel",
+                        "setForeignShortcutKeys", "asa(ai)", "4", "plasmashell", action, "plasmashell", label, "0"],
+                       capture_output=True)   # release right away, not only after the next login
+    return True
+
+
+def tray_ai_shortcut(seq=AI_SHORTCUT):
+    """Keyboard shortcut for the AI assistant inside the system tray. Tray items can't be reached from Plasma
+    scripts, so the shortcut is written into the config file while Plasma is stopped."""
+    if not free_activity_keys():
+        return
+    import re
+    try:
+        text = open(APPLETSRC).read()
+    except OSError:
+        return
+    m = re.search(r"^\[(Containments\]\[\d+\]\[Applets\]\[\d+\]\[Applets\]\[\d+)\]\n(?:[^\[\n][^\n]*\n)*?plugin=org\.plasmarchy\.aiusage$",
+                  text, re.M)
+    if m:
+        groups = ["--group" if i % 2 == 0 else g for g in m.group(1).split("][") for i in (0, 1)]
+        subprocess.run(["kwriteconfig6", "--file", APPLETSRC, *groups, "--group", "Shortcuts",
+                        "--key", "global", seq], check=False)
+
+
+def restart_plasma(before_start=None):
+    if before_start:
+        subprocess.run(["systemctl", "--user", "stop", "plasma-plasmashell"], check=False)
+        before_start()
+        subprocess.run(["systemctl", "--user", "start", "plasma-plasmashell"], check=False)
+    else:
+        subprocess.run(["systemctl", "--user", "restart", "plasma-plasmashell"], check=False)
     for _ in range(40):   # wait until Plasma accepts scripts again
         time.sleep(0.5)
         if subprocess.run(["qdbus6", "org.kde.plasmashell", "/PlasmaShell"], capture_output=True).returncode == 0:
@@ -212,5 +297,7 @@ def restart_plasma():
 if __name__ == "__main__":
     if sys.argv[1:2] == ["player"]:
         player(sys.argv[2] if len(sys.argv) > 2 else "toggle")
+    elif sys.argv[1:2] == ["migrate"]:
+        migrate()
     else:
         main()

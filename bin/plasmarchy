@@ -316,9 +316,16 @@ branding() {         # logo for screensaver and animated wallpapers
 }
 
 menu() {             # Omarchy-style menu (Windows key): main entries, search, apps
-    local data="$RUN/plasmarchy-menu.json" cmd
+    local data="$RUN/plasmarchy-menu.json" cmd pidfile="$RUN/plasmarchy-menu.pid" other
+    # Pressed again while open: close it
+    other="$(cat "$pidfile" 2>/dev/null || true)"
+    if [ -n "$other" ] && grep -q "menu.qml" "/proc/$other/cmdline" 2>/dev/null; then
+        kill "$other"; return 0
+    fi
     py menu.py "$data"
-    cmd="$(qml_run "$LIB/menu.qml" -- "$data" | sed -n 's/^.*PLASMARCHY_MENU=//p' | tail -1)"
+    cmd="$(QT_FORCE_STDERR_LOGGING=1 QML_XHR_ALLOW_FILE_READ=1 "$QML" "$LIB/menu.qml" -- "$data" 2>&1 & echo $! > "$pidfile"; wait)"
+    cmd="$(printf '%s\n' "$cmd" | sed -n 's/^.*PLASMARCHY_MENU=//p' | tail -1)"
+    rm -f "$pidfile"
     [ -n "$cmd" ] && (setsid bash -c "$cmd" >/dev/null 2>&1 &)
     return 0
 }

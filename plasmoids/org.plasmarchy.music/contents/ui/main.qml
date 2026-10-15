@@ -66,7 +66,9 @@ PlasmoidItem {
             anchors.centerIn: parent
             spacing: Kirigami.Units.smallSpacing
             PC3.Label {
-                text: root.playing ? String.fromCodePoint(0xF075A) : String.fromCodePoint(0xF03E4)   // note / pause
+                // note while playing or idle, pause symbol only when a track is actually paused
+                text: root.hasPlayer && !root.playing && root.player.playbackStatus === Mpris.PlaybackStatus.Paused
+                      ? String.fromCodePoint(0xF03E4) : String.fromCodePoint(0xF075A)
                 font.family: root.mono
                 font.pixelSize: Kirigami.Theme.defaultFont.pixelSize * 1.05
                 color: root.playing ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor

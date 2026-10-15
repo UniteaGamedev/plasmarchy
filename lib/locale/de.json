@@ -1,5 +1,5 @@
 {
- "  Menu:              Windows key (search, apps, style, toggles, setup, system)\n  Switch theme:      menu \"Style\"  or  plasmarchy\n  Theme Studio:      menu \"Style\"  or  plasmarchy studio\n  Logo:              menu \"Style\"  or  plasmarchy branding\n  AI assistant:      robot icon top right  or  Meta+Shift+A\n  Talk to your PC:   {0} (press again to send, say \"stop\" to end)\n  Music player:      top left, appears while something plays\n  Voice (optional, ~650 MB, local):     plasmarchy voice setup\n  Local AI (optional, fallback AI):     plasmarchy llm setup\n  Undo:              {1}\n\n  Rounded window corners become active after logging out and back in.": "  Menü:              Windows-Taste (Suche, Apps, Stil, Schalter, Einrichtung, System)\n  Theme wechseln:    Menü „Stil“  oder  plasmarchy\n  Theme Studio:      Menü „Stil“  oder  plasmarchy studio\n  Logo:              Menü „Stil“  oder  plasmarchy branding\n  KI-Assistent:      Roboter-Symbol oben rechts  oder  Meta+Shift+A\n  Mit dem PC reden:  {0} (nochmal drücken sendet ab, „Stopp“ beendet)\n  Musik-Player:      oben links, erscheint, sobald etwas läuft\n  Sprache (optional, ~650 MB, lokal):   plasmarchy voice setup\n  Lokale KI (optional, Ausweich-KI):    plasmarchy llm setup\n  Rückgängig:        {1}\n\n  Abgerundete Fensterecken werden nach dem nächsten Ab- und Anmelden aktiv.",
+ "  Menu:              Windows key (search, apps, style, toggles, setup, system)\n  Switch theme:      menu \"Style\"  or  plasmarchy\n  Theme Studio:      menu \"Style\"  or  plasmarchy studio\n  Logo:              menu \"Style\"  or  plasmarchy branding\n  AI assistant:      robot icon top right  or  Meta+A\n  Talk to your PC:   {0} (press again to send, say \"stop\" to end)\n  Music player:      top left, appears while something plays\n  Voice (optional, ~650 MB, local):     plasmarchy voice setup\n  Local AI (optional, fallback AI):     plasmarchy llm setup\n  Undo:              {1}\n\n  Rounded window corners become active after logging out and back in.": "  Menü:              Windows-Taste (Suche, Apps, Stil, Schalter, Einrichtung, System)\n  Theme wechseln:    Menü „Stil“  oder  plasmarchy\n  Theme Studio:      Menü „Stil“  oder  plasmarchy studio\n  Logo:              Menü „Stil“  oder  plasmarchy branding\n  KI-Assistent:      Roboter-Symbol oben rechts  oder  Meta+A\n  Mit dem PC reden:  {0} (nochmal drücken sendet ab, „Stopp“ beendet)\n  Musik-Player:      oben links, erscheint, sobald etwas läuft\n  Sprache (optional, ~650 MB, lokal):   plasmarchy voice setup\n  Lokale KI (optional, Ausweich-KI):    plasmarchy llm setup\n  Rückgängig:        {1}\n\n  Abgerundete Fensterecken werden nach dem nächsten Ab- und Anmelden aktiv.",
  "%1 to talk": "%1 zum Sprechen",
  "%1% left": "%1 % übrig",
  "%1% left · resets %2": "%1 % übrig · Reset %2",
@@ -33,6 +33,7 @@
  "Applying the theme failed": "Fehler beim Anwenden des Themes",
  "Applying theme": "Theme anwenden",
  "Apps": "Apps",
+ "Apps, style, toggles, setup and system – also with the Windows key": "Apps, Stil, Schalter, Einrichtung und System – auch mit der Windows-Taste",
  "Ask me anything": "Frag mich etwas",
  "Assistant": "Assistent",
  "Audio": "Audio",
@@ -295,6 +296,8 @@
  "Yellow light": "Gelb hell",
  "Your own themes stay in {0} (delete them with --purge).": "Eigene Themes liegen weiter in {0} (löschen mit --purge).",
  "active": "aktiv",
+ "animated": "animiert",
+ "animated wallpaper": "animierter Hintergrund",
  "apply": "anwenden",
  "building the GPU version (CUDA, takes a while longer) …": "baue die GPU-Version (CUDA, dauert etwas länger) …",
  "building whisper.cpp (takes a few minutes) …": "baue whisper.cpp (dauert ein paar Minuten) …",

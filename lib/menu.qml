@@ -97,6 +97,7 @@ Window {
     Component.onCompleted: {
         try { menuData = read(args[args.length - 1]) } catch (e) { console.log("menu data: " + e) }
         if (menuData.colors) c = menuData.colors
+        requestActivate()
         search.forceActiveFocus()
     }
     onActiveChanged: if (!active && !closing) finish("")   // clicked elsewhere / switched away

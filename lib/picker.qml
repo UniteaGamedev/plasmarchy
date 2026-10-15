@@ -165,6 +165,40 @@ Window {
                     }
                 }
 
+                // badge for themes with an animated wallpaper
+                Rectangle {
+                    visible: !!card.modelData.animation
+                    // top middle of the (slanted) tile - the right edge is covered by the neighbouring tile
+                    anchors.top: parent.top; anchors.topMargin: 14
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.horizontalCenterOffset: win.slant * 0.45
+                    height: 30
+                    width: badgeRow.implicitWidth + 20
+                    radius: 15
+                    color: Qt.rgba(0, 0, 0, 0.6)
+                    border.color: card.modelData.colors[1]
+                    border.width: 1.5
+                    opacity: card.selected ? 1 : 0.75
+                    Row {
+                        id: badgeRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: String.fromCodePoint(0xF040A)   // play
+                            color: card.modelData.colors[1]
+                            font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 15
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: card.selected
+                            text: win.tr("animated")
+                            color: "white"
+                            font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 13
+                        }
+                    }
+                }
+
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
@@ -183,7 +217,9 @@ Window {
             spacing: 12
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: win.themes.length ? win.themes[list.currentIndex].name + (win.themes[list.currentIndex].slug === win.current ? "  ·  " + tr("active") : "") : ""
+                text: win.themes.length ? win.themes[list.currentIndex].name
+                      + (win.themes[list.currentIndex].animation ? "  ·  " + tr("animated wallpaper") : "")
+                      + (win.themes[list.currentIndex].slug === win.current ? "  ·  " + tr("active") : "") : ""
                 color: "white"
                 font.pixelSize: 28
                 font.weight: Font.DemiBold

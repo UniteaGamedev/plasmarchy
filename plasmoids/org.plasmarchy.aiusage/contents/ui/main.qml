@@ -105,7 +105,7 @@ PlasmoidItem {
     Component.onCompleted: { run("providers"); run("voice status"); run("settings get") }
     onExpandedChanged: if (root.expanded) { run("providers"); run("voice status"); run("assistant history"); run("ai-usage --json"); run("settings get") }
 
-    preferredRepresentation: compactRepresentation
+    // No preferredRepresentation: the widget lives in the system tray, which hosts the popup
     toolTipMainText: i18n("AI Assistant")
     toolTipSubText: (limits.length ? limits.map(w => w.name + " " + w.used + " %").join(" · ") + "\n" : "")
                     + i18n("%1 to talk", root.hotkey)
@@ -135,7 +135,8 @@ PlasmoidItem {
                 spacing: Kirigami.Units.smallSpacing
                 PC3.ToolButton { visible: root.page === 1; icon.name: "go-previous-symbolic"; onClicked: root.page = 0
                                  PC3.ToolTip { text: i18n("Back to chat") } }
-                Kirigami.Heading { level: 3; text: root.page === 1 ? i18n("Settings") : root.robot + "  " + i18n("Assistant")
+                // the tray already shows the title; only the settings page names itself
+                Kirigami.Heading { level: 3; text: root.page === 1 ? i18n("Settings") : ""
                                    font.family: root.mono; Layout.fillWidth: true }
                 PC3.ComboBox {
                     id: providerBox

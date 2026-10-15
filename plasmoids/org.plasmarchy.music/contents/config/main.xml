@@ -4,8 +4,8 @@
       xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
   <kcfgfile name=""/>
   <group name="General">
-    <!-- auto: only while a player is running | always | off -->
-    <entry name="show" type="String"><default>auto</default></entry>
+    <!-- always (dimmed icon while idle) | auto: only while a player is running | off -->
+    <entry name="show" type="String"><default>always</default></entry>
     <entry name="showTitle" type="Bool"><default>true</default></entry>
     <entry name="maxTitleWidth" type="Int"><default>16</default></entry>
   </group>

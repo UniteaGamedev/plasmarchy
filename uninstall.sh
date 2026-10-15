@@ -52,6 +52,7 @@ rm -f "$HOME"/.local/share/applications/plasmarchy-*.desktop
 rm -f "$HOME"/.local/share/color-schemes/Plasmarchy*.colors "$HOME"/.local/share/konsole/Plasmarchy*
 rm -rf "$HOME"/.local/share/icons/Papirus-Dark-* "$HOME"/.local/share/icons/Papirus-Light-*
 rm -rf "$HOME"/.local/share/plasma/desktoptheme/plasmarchy
+rm -f "$HOME"/.local/share/locale/*/LC_MESSAGES/plasma_*_org.plasmarchy.*.mo
 [ "$PURGE" = 1 ] && rm -rf "$CONF_DIR" "$STATE_DIR"
 kwriteconfig6 --file kglobalshortcutsrc --group services --group plasmarchy-talk.desktop --key _launch --delete
 kwriteconfig6 --file kglobalshortcutsrc --group services --group plasmarchy-menu.desktop --key _launch --delete
