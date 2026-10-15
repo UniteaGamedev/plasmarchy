@@ -1,0 +1,45 @@
+#version 440
+// Rising glow dots. The screen is split into vertical lanes with 3 dots each, so every pixel only has to look at
+// the dots of its own and the neighboring lanes.
+layout(location = 0) in vec2 qt_TexCoord0;
+layout(location = 0) out vec4 fragColor;
+layout(std140, binding = 0) uniform buf {
+    mat4 qt_Matrix;
+    float qt_Opacity;
+    vec2 size;
+    float clock;
+    float lanes;
+    vec4 accent;
+    vec4 second;
+};
+
+#include "common.glsl"
+
+void main() {
+    vec2 p = qt_TexCoord0 * size;
+    float unit = min(size.x, size.y) / 100.0;
+    float laneW = size.x / lanes;
+    float lane = floor(p.x / laneW);
+    float travel = size.y * 1.15;
+    vec4 o = vec4(0.0);
+    for (int dl = -1; dl <= 1; dl++) {
+        float l = lane + float(dl);
+        for (int j = 0; j < 3; j++) {
+            vec3 k = vec3(l, float(j), 5.0);
+            float phase = rnd(k);
+            float v = 0.5 + rnd(k + 11.0);
+            float s = (0.4 + 1.1 * rnd(k + 23.0)) * unit;          // diameter
+            float pos = mod(phase * travel + clock * v * unit * 2.4, travel);
+            vec2 c = vec2((l + 0.15 + 0.7 * rnd(k + 37.0)) * laneW + sin(clock * 0.4 + phase * 6.28) * unit * 2.0,
+                          size.y + unit * 2.0 - pos);
+            float fade = min(1.0, pos / (travel * 0.15)) * (1.0 - pos / travel) * 0.8;
+            float d = length(p - c);
+            float a = clamp(s * 0.5 - d + 0.5, 0.0, 1.0)                 // the dot
+                    + 0.18 * clamp(s * 1.5 - d + 0.5, 0.0, 1.0);         // its soft halo
+            a = min(a, 1.0) * fade;
+            vec3 col = rnd(k + 51.0) < 0.75 ? accent.rgb : second.rgb;
+            o = vec4(col * a, a) + o * (1.0 - a);
+        }
+    }
+    fragColor = o * qt_Opacity;
+}

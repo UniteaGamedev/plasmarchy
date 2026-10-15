@@ -1,0 +1,38 @@
+#version 440
+// The logo sparkling: dots twinkling on a grid laid over the logo image, only where the logo is.
+layout(location = 0) in vec2 qt_TexCoord0;
+layout(location = 0) out vec4 fragColor;
+layout(std140, binding = 0) uniform buf {
+    mat4 qt_Matrix;
+    float qt_Opacity;
+    vec2 size;
+    vec2 grid;        // columns, rows
+    float clock;
+    float unit;
+    float density;    // share of logo cells that sparkle
+    vec4 color;
+};
+layout(binding = 1) uniform sampler2D logo;
+
+#include "common.glsl"
+
+void main() {
+    vec2 cellSize = size / grid;
+    vec2 cellPos = floor(qt_TexCoord0 * grid);
+    vec4 o = vec4(0.0);
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            vec2 c = cellPos + vec2(float(dx), float(dy));
+            float seed = rnd(vec3(c, 9.0));
+            if (seed > density) continue;
+            vec2 center = (c + 0.5) / grid;
+            if (texture(logo, center).a < 0.5) continue;
+            seed /= density;
+            float tw = max(0.0, sin(clock * (1.1 + seed) + seed * 40.0));
+            float r = unit * (0.5 + tw * 0.7) * 0.5;
+            float d = length(qt_TexCoord0 * size - center * size);
+            float a = clamp(r - d + 0.5, 0.0, 1.0) * tw * tw * tw;
+            o = vec4(color.rgb * a, a) + o * (1.0 - a);
+        }
+    fragColor = o * qt_Opacity;
+}

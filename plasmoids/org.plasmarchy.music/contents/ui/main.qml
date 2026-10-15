@@ -25,7 +25,7 @@ PlasmoidItem {
     readonly property bool visibleInBar: show === "always" || (show === "auto" && hasPlayer)
     readonly property string title: !player ? "" : player.track || player.identity
     readonly property string artist: !player ? "" : (player.artist || "")
-    readonly property string line: artist && title ? artist + " – " + title : title
+    readonly property string line: artist && title ? artist + " · " + title : title
 
     // Spotify (spotify_player)
     property var spotify: ({ installed: false, authenticated: false, running: false })
@@ -308,8 +308,10 @@ PlasmoidItem {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     opacity: 0.7
-                    text: root.youtube ? i18n("Search and play YouTube Music right from the top bar. Every song starts a radio with similar music, no browser needed. The setup installs two small packages.")
-                        : i18n("Play Spotify right from the top bar, without a browser or the Spotify app. You need Spotify Premium and sign in once in your browser.")
+                    // explains what the buttons below do; the button names are inserted so they always match
+                    text: root.youtube ? i18n("Play YouTube Music right here in the top bar. Click “%1” and Plasmarchy installs the two small packages it needs. Prefer doing it yourself? Copy the command below and paste it into a terminal.", i18n("Set up automatically"))
+                        : !root.spotify.installed ? i18n("Play Spotify right here in the top bar (Spotify Premium needed). Click “%1” and Plasmarchy installs the player for you. Prefer doing it yourself? Copy the command below and paste it into a terminal.", i18n("Set up automatically"))
+                        : i18n("One step left: sign in to Spotify. Click “%1” and confirm the sign in in your browser. Or copy the command below and run it in a terminal yourself.", i18n("Connect Spotify"))
                 }
                 RowLayout {   // the command, ready to copy
                     Layout.fillWidth: true

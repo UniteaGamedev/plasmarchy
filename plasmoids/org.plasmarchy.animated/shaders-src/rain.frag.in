@@ -1,0 +1,62 @@
+#version 440
+// Digital rain like in The Matrix. Each column has one drop: a bright head moving down one cell per step,
+// followed by a trail that fades out exactly like the old canvas did (a little darker every step).
+// Characters in the trail change now and then and light up again when they do.
+layout(location = 0) in vec2 qt_TexCoord0;
+layout(location = 0) out vec4 fragColor;
+layout(std140, binding = 0) uniform buf {
+    mat4 qt_Matrix;
+    float qt_Opacity;
+    vec2 size;        // item size in pixels
+    float cell;       // cell size in pixels
+    float tick;       // animation steps (15 per second at normal speed)
+    vec4 bg;
+    vec4 trail;
+    vec4 head;
+};
+layout(binding = 1) uniform sampler2D atlas;   // 8 x 8 glyphs, white on transparent, one glyph = one cell
+
+#include "common.glsl"
+
+const float FADE = 0.925;                      // brightness kept per step
+
+float glyph(float g, vec2 local) {
+    vec2 uv = (vec2(mod(g, 8.0), floor(g / 8.0)) + local) / 8.0;
+    return texture(atlas, uv).a;
+}
+
+void main() {
+    vec2 p = qt_TexCoord0 * size;
+    float col = floor(p.x / cell);
+    float row = floor(p.y / cell);
+    vec2 local = fract(p / cell);
+
+    float v = 0.35 + 0.75 * rnd(vec3(col, 1.0, 7.0));          // cells per step
+    float trailLen = ceil(log(0.03) / log(FADE) * v);           // where the trail has faded to 3 %
+    float rows = ceil(size.y / cell);
+    float period = rows + trailLen + 4.0 + floor(24.0 * rnd(vec3(col, 2.0, 7.0)));
+    float pos = tick * v + rnd(vec3(col, 3.0, 7.0)) * period;
+    float cycle = floor(pos / period);
+    float dist = floor(mod(pos, period)) - 4.0 - row;           // cells behind the head
+
+    vec3 c = bg.rgb;
+    if (dist >= 0.0 && dist < trailLen) {
+        float seed = rnd(vec3(col, row, cycle));
+        float age = dist / v;                                   // steps since the head passed
+        float b = pow(FADE, age);
+        if (dist < 0.5) {                                       // the head: a new character every step
+            float g = floor(64.0 * rnd(vec3(col, row, tick)));
+            c = mix(c, head.rgb, glyph(g, local));
+        } else {
+            // the character changes every 25..90 steps; a fresh one lights up again for a moment
+            float every = floor(25.0 + 65.0 * seed);
+            float t = tick + floor(every * fract(seed * 13.7));
+            float gen = floor(t / every);
+            float since = t - gen * every;
+            float g = floor(64.0 * rnd(vec3(seed * 977.0, gen, 3.0)));
+            if (dist < 14.0 && since < age) b = max(b, 0.85 * pow(FADE, since));
+            c = mix(c, trail.rgb, b * glyph(g, local));
+        }
+    }
+    fragColor = vec4(c, 1.0) * qt_Opacity;
+}

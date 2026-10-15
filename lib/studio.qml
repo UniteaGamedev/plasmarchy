@@ -17,7 +17,7 @@ ApplicationWindow {
     minimumWidth: 1000
     minimumHeight: 680
     visible: true
-    title: "Plasmarchy – Theme Studio"
+    title: "Plasmarchy Theme Studio"
 
     readonly property var args: Qt.application.arguments
     readonly property string manifestFile: args[args.indexOf("--") + 1]

@@ -201,7 +201,7 @@ QQC2.ScrollView {
                     Layout.fillWidth: true; Layout.minimumWidth: Kirigami.Units.gridUnit * 5   // shrink + elide instead of widening the page
                     enabled: page.s && page.s.voice.ready
                     readonly property var choices: page.s ? page.s.voice.models : []
-                    model: choices.map(c => c.name + (c.installed ? "" : " – " + i18n("download")))
+                    model: choices.map(c => c.name + (c.installed ? "" : " (" + i18n("download") + ")"))
                     currentIndex: page.s ? Math.max(0, choices.findIndex(c => c.id === page.s.voice.model)) : 0
                     onActivated: (i) => page.set("VOICE_MODEL", choices[i].id)
                 }
@@ -213,7 +213,7 @@ QQC2.ScrollView {
                         Layout.fillWidth: true; Layout.minimumWidth: Kirigami.Units.gridUnit * 5   // shrink + elide instead of widening the page
                         enabled: page.s && page.s.voice.ttsReady
                         readonly property var choices: page.s ? page.s.voice.voices : []
-                        model: choices.map(c => c.name + (c.installed ? "" : " – " + i18n("download")))
+                        model: choices.map(c => c.name + (c.installed ? "" : " (" + i18n("download") + ")"))
                         currentIndex: page.s ? Math.max(0, choices.findIndex(c => c.id === page.s.voice.tts)) : 0
                         onActivated: (i) => page.set("VOICE_TTS", choices[i].id)
                     }

@@ -1,0 +1,42 @@
+#version 440
+// Aurora: five soft radial color clouds drifting on Lissajous-like paths (same motion as the old QML shapes).
+layout(location = 0) in vec2 qt_TexCoord0;
+layout(location = 0) out vec4 fragColor;
+layout(std140, binding = 0) uniform buf {
+    mat4 qt_Matrix;
+    float qt_Opacity;
+    vec2 size;
+    float clock;      // seconds
+    vec4 c0;
+    vec4 c1;
+    vec4 c2;
+    vec4 c3;
+    vec4 c4;
+};
+
+#include "common.glsl"
+
+const float TAU = 6.2831853;
+
+vec4 blob(vec2 p, float i, vec4 c) {
+    float unit = min(size.x, size.y) / 100.0;
+    float r = unit * (38.0 + i * 9.0);
+    vec2 center = size * vec2(0.15 + 0.17 * i + 0.12 * sin(clock * TAU / (40.0 + i * 8.0)),
+                              (mod(i, 2.0) > 0.5 ? 0.45 : 0.5) + 0.22 * sin(clock * TAU / (44.0 + i * 7.0) + i));
+    float d = length(p - center) / r;
+    float a = d < 0.45 ? mix(1.0, 0.45, d / 0.45) : mix(0.45, 0.0, clamp((d - 0.45) / 0.55, 0.0, 1.0));
+    a *= 0.45 + 0.15 * sin(clock * TAU / (20.0 + i * 3.0));
+    return vec4(c.rgb * a, a);           // premultiplied
+}
+
+void main() {
+    vec2 p = qt_TexCoord0 * size;
+    vec4 o = blob(p, 0.0, c0);
+    vec4 b;
+    b = blob(p, 1.0, c1); o = b + o * (1.0 - b.a);
+    b = blob(p, 2.0, c2); o = b + o * (1.0 - b.a);
+    b = blob(p, 3.0, c3); o = b + o * (1.0 - b.a);
+    b = blob(p, 4.0, c4); o = b + o * (1.0 - b.a);
+    o += (rnd(vec3(p, 1.0)) - 0.5) / 255.0 * o.a;      // a little dither against banding
+    fragColor = o * qt_Opacity;
+}

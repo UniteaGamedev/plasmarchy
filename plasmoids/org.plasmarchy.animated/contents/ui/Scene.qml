@@ -3,7 +3,6 @@
 // "rain" (digital rain), "logo" (the ASCII logo assembling itself like in the screensaver).
 // Except for "logo", they draw the branding logo in the accent color in the middle (unless showLogo is off).
 import QtQuick
-import QtQuick.Shapes
 import QtQuick.Effects
 
 Item {
@@ -23,13 +22,18 @@ Item {
 
     readonly property real unit: Math.min(width, height) / 100
 
-    // Shared clock at 25 frames per second instead of 60: slow wallpaper motion looks the same, but Plasma only
-    // has to redraw the desktop 25 times a second (much less CPU and battery).
-    property real clock: 0               // seconds
+    // Performance: every effect is a GPU shader, the CPU only advances this clock. Each effect gets just as many
+    // frames as it needs to look smooth (the slow aurora 15, the rain its classic 15, the particles 20, the logo
+    // 25 while it builds up and 8 while it stands) - every frame Plasma and KWin don't have to draw saves CPU.
+    property real clock: 0               // seconds (wraps after two hours to keep the shaders precise)
+    readonly property int frameInterval: {
+        var ms = effect === "particles" ? 50 : effect === "logo" ? 125 : 66
+        return ascii.active ? Math.min(ms, ascii.moving ? 40 : 125) : ms
+    }
     Timer {
-        interval: 40; repeat: true
-        running: scene.running && (scene.effect === "aurora" || scene.effect === "particles" || ascii.active)
-        onTriggered: scene.clock += 0.04 * scene.speed
+        interval: scene.frameInterval; repeat: true
+        running: scene.running
+        onTriggered: scene.clock = (scene.clock + interval / 1000 * scene.speed) % 7200
     }
     function col(i) { return colorList.length ? colorList[i % colorList.length] : accent }
 
@@ -42,37 +46,17 @@ Item {
     }
 
     // --- Aurora: radial color clouds wandering slowly -----------------------------------------------
-    Item {
+    ShaderEffect {
         anchors.fill: parent
         visible: scene.effect === "aurora"
-        Repeater {
-            model: scene.effect === "aurora" ? 5 : 0
-            delegate: Shape {
-                id: blob
-                required property int index
-                readonly property real r: scene.unit * (38 + index * 9)
-                readonly property color c: index === 0 ? scene.accent : scene.col(index - 1)
-                width: r * 2; height: r * 2
-                x: scene.width * px - r
-                y: scene.height * py - r
-                opacity: 0.45 + 0.15 * Math.sin(scene.clock * 2 * Math.PI / (20 + index * 3))
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                    strokeWidth: -1
-                    fillGradient: RadialGradient {
-                        centerX: blob.r; centerY: blob.r; centerRadius: blob.r
-                        focalX: blob.r; focalY: blob.r
-                        GradientStop { position: 0; color: blob.c }
-                        GradientStop { position: 0.45; color: Qt.alpha(blob.c, 0.45) }
-                        GradientStop { position: 1; color: Qt.alpha(blob.c, 0) }
-                    }
-                    PathAngleArc { centerX: blob.r; centerY: blob.r; radiusX: blob.r; radiusY: blob.r; startAngle: 0; sweepAngle: 360 }
-                }
-                // Lissajous-like drift from the shared clock: different period per axis and blob
-                readonly property real px: 0.15 + 0.17 * index + 0.12 * Math.sin(scene.clock * 2 * Math.PI / (40 + index * 8))
-                readonly property real py: (index % 2 ? 0.45 : 0.5) + 0.22 * Math.sin(scene.clock * 2 * Math.PI / (44 + index * 7) + index)
-            }
-        }
+        readonly property size size: Qt.size(width, height)
+        readonly property real clock: scene.clock
+        readonly property color c0: scene.accent
+        readonly property color c1: scene.col(0)
+        readonly property color c2: scene.col(1)
+        readonly property color c3: scene.col(2)
+        readonly property color c4: scene.col(3)
+        fragmentShader: "../shaders/aurora.frag.qsb"
     }
 
     // --- Particles: glow dots rising, plus the logo sparkling ---------------------------------------
@@ -87,127 +71,79 @@ Item {
         opacity: 0.85
     }
 
-    // Rising glow dots, computed from the shared 25 fps clock (Qt's particle system would simulate every
-    // particle 60 times a second). Each dot: start position, speed and size from a fixed random seed.
-    Item {
-        id: dust
+    // rising glow dots
+    ShaderEffect {
         anchors.fill: parent
         visible: scene.effect === "particles"
-        readonly property var dots: {
-            var out = []
-            for (var i = 0; i < 110; i++)
-                out.push({ x: Math.random(), phase: Math.random(), v: 0.5 + Math.random(), s: 0.4 + Math.random() * 1.1,
-                           c: Math.random() < 0.75 })
-            return out
-        }
-        Repeater {
-            model: dust.visible ? dust.dots : []
-            delegate: Rectangle {
-                required property var modelData
-                readonly property real travel: scene.height * 1.15
-                readonly property real pos: (modelData.phase * travel + scene.clock * modelData.v * scene.unit * 2.4) % travel
-                width: scene.unit * modelData.s; height: width; radius: width / 2
-                x: modelData.x * scene.width + Math.sin(scene.clock * 0.4 + modelData.phase * 6.28) * scene.unit * 2
-                y: scene.height + scene.unit * 2 - pos
-                color: modelData.c ? scene.accent : scene.col(0)
-                opacity: Math.min(1, pos / (travel * 0.15)) * (1 - pos / travel) * 0.8
-                Rectangle {   // soft halo
-                    anchors.centerIn: parent
-                    width: parent.width * 3; height: width; radius: width / 2
-                    color: parent.color
-                    opacity: 0.18
-                }
-            }
-        }
-        // the logo sparkles: dots twinkling on random cells of the ASCII logo
-        Repeater {
-            model: dust.visible && scene.showLogo ? Math.min(90, ascii.cells.length) : 0
-            delegate: Rectangle {
-                required property int index
-                readonly property var cell: ascii.cells[(index * 7919) % ascii.cells.length]
-                readonly property real tw: Math.max(0, Math.sin(scene.clock * (1.1 + cell.seed) + cell.seed * 40))
-                // the ASCII art and the logo image cover the same shape: map the cell onto the image
-                x: logoBox.x + (cell.c + 0.5) / ascii.cols * logoBox.width - width / 2
-                y: logoBox.y + (cell.r + 0.5) / Math.max(1, ascii.lines.length) * logoBox.height - height / 2
-                width: scene.unit * (0.5 + tw * 0.7); height: width; radius: width / 2
-                color: Qt.tint(scene.accent, Qt.rgba(1, 1, 1, 0.35))
-                opacity: Math.pow(tw, 3)
-            }
-        }
+        readonly property size size: Qt.size(width, height)
+        readonly property real clock: scene.clock
+        readonly property real lanes: 36
+        readonly property color accent: scene.accent
+        readonly property color second: scene.col(0)
+        fragmentShader: "../shaders/particles.frag.qsb"
+    }
+    // the logo sparkles: dots twinkling where the logo is
+    ShaderEffect {
+        x: logoBox.x; y: logoBox.y; width: logoBox.width; height: logoBox.height
+        visible: scene.effect === "particles" && scene.showLogo && logoImage.status === Image.Ready
+        readonly property size size: Qt.size(width, height)
+        readonly property size grid: ascii.lines.length ? Qt.size(ascii.cols, ascii.lines.length) : Qt.size(40, 8)
+        readonly property real clock: scene.clock
+        readonly property real unit: scene.unit
+        readonly property real density: ascii.cells.length ? Math.min(1, 90 / ascii.cells.length) : 0.3
+        readonly property color color: Qt.tint(scene.accent, Qt.rgba(1, 1, 1, 0.35))
+        readonly property var logo: logoImage
+        fragmentShader: "../shaders/sparkle.frag.qsb"
     }
 
     // --- Rain: digital rain like in The Matrix --------------------------------------------------
-    // Drawn on a canvas that is never cleared, only darkened a little every frame: each column's bright head
-    // leaves a trail that fades out, and random characters inside the trails keep flickering.
-    // Performance: drawn at half resolution and scaled up by the GPU (a quarter of the pixels to darken and
-    // upload per frame), no blur effects - the soft upscaling gives the glyphs a slight glow for free.
-    Canvas {
+    // Computed entirely on the GPU (shaders/rain.frag) in full resolution: the CPU only advances the clock
+    // 15 times a second.
+    Item {
         id: matrix
-        width: Math.ceil(parent.width / 2)
-        height: Math.ceil(parent.height / 2)
-        scale: 2
-        transformOrigin: Item.TopLeft
-        smooth: true
         visible: scene.effect === "rain"
-        renderStrategy: Canvas.Threaded
-        readonly property real cell: Math.max(8, scene.unit * 0.85)
-        readonly property int columns: Math.ceil(width / cell)
-        readonly property string glyphs: "ｦｱｳｴｵｶｷｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ012345789Z:・.\"=*+-<>¦｜"
-        property var drops: []        // per column: head position (in cells) and speed
-        property bool fresh: true
-        function glyph() { return glyphs[Math.floor(Math.random() * glyphs.length)] }
-        function css(c, a) {   // the canvas wants CSS color strings
-            return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + (a === undefined ? 1 : a) + ")"
-        }
-        function reset() {
-            drops = []
-            for (var i = 0; i < columns; i++)
-                drops.push({ y: -Math.random() * height / cell, v: 0.35 + Math.random() * 0.75 })
-            fresh = true
-        }
-        onColumnsChanged: reset()
-        onVisibleChanged: if (visible) { reset(); requestPaint() }
-        Timer {
-            interval: 66          // ~15 frames per second: the classic look, and light on the CPU
-            repeat: true
-            running: matrix.visible && scene.running
-            onTriggered: matrix.requestPaint()
-        }
-        onPaint: {
-            var ctx = getContext("2d")
-            var bg = scene.darkBackground
-            if (fresh) {
-                ctx.fillStyle = css(bg)
-                ctx.fillRect(0, 0, width, height)
-                fresh = false
-            }
-            ctx.fillStyle = css(bg, 0.075)                        // the fade that turns heads into trails
-            ctx.fillRect(0, 0, width, height)
-            ctx.font = Math.round(cell * 0.9) + "px \"Noto Sans CJK JP\""
-            ctx.textAlign = "center"
-            ctx.textBaseline = "top"
-            var trail = css(scene.accent)
-            var trailDim = css(scene.accent, 0.85)
-            var head = css(Qt.tint(scene.foreground, Qt.rgba(1, 1, 1, 0.55)))
-            for (var i = 0; i < drops.length; i++) {
-                var d = drops[i]
-                var x = i * cell + cell / 2
-                var prev = Math.floor(d.y)
-                d.y += d.v * scene.speed
-                var row = Math.floor(d.y)
-                if (row !== prev && row >= 0) {
-                    ctx.fillStyle = trail                         // the old head becomes part of the trail
-                    ctx.fillText(glyph(), x, prev * cell)
-                    ctx.fillStyle = head                          // the new head is almost white
-                    ctx.fillText(glyph(), x, row * cell)
+        anchors.fill: parent
+        readonly property real cell: Math.round(Math.max(16, scene.unit * 1.7))
+        // the characters, drawn once into an 8 x 8 texture with one glyph per cell (no scaling, crisp)
+        readonly property string glyphs: "ｦｱｳｴｵｶｷｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ012345789Z:・.\"=*+-<>¦｜ｸｹﾁﾄﾍﾙﾚﾛ"
+        Grid {
+            id: atlasItem
+            columns: 8
+            visible: matrix.visible
+            Repeater {
+                model: 64
+                Text {
+                    required property int index
+                    width: matrix.cell; height: matrix.cell
+                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    text: matrix.glyphs[index % matrix.glyphs.length]
+                    font.family: "Noto Sans CJK JP"
+                    font.pixelSize: Math.round(matrix.cell * 0.9)
+                    font.weight: Font.Medium
+                    renderType: Text.NativeRendering
+                    color: "white"
                 }
-                if (Math.random() < 0.18 && row > 2) {            // flickering characters inside the trail
-                    ctx.fillStyle = trailDim
-                    ctx.fillText(glyph(), x, (row - 1 - Math.floor(Math.random() * 14)) * cell)
-                }
-                if (row * cell > height && Math.random() > 0.97)  // restart from the top at random
-                    drops[i] = { y: -Math.random() * 12, v: 0.35 + Math.random() * 0.75 }
             }
+        }
+        ShaderEffectSource {
+            id: atlas
+            sourceItem: atlasItem
+            hideSource: true
+            live: false
+            smooth: true
+            textureSize: Qt.size(matrix.cell * 8, matrix.cell * 8)
+            width: 0; height: 0
+        }
+        ShaderEffect {
+            anchors.fill: parent
+            readonly property size size: Qt.size(width, height)
+            readonly property real cell: matrix.cell
+            readonly property real tick: Math.floor(scene.clock * 15)
+            readonly property color bg: scene.darkBackground
+            readonly property color trail: scene.accent
+            readonly property color head: Qt.tint(scene.foreground, Qt.rgba(1, 1, 1, 0.55))
+            readonly property var atlas: atlas
+            fragmentShader: "../shaders/rain.frag.qsb"
         }
     }
 
@@ -241,8 +177,7 @@ Item {
         // the color wave moves, and only 8 times a second.
         readonly property real cycle: 15
         readonly property real phase: scene.clock % cycle
-        // color wave: changes 8 times a second (QML only re-evaluates the cells when the value really changes)
-        readonly property real shimmer: Math.floor(scene.clock * 8) / 48 % 1
+        readonly property real shimmer: scene.clock / 6 % 1    // the color wave, one pass every 6 s
         onPhaseChanged: {
             var p = phase
             var newT = p < 4.2 ? p / 4.2 : p < 13.2 ? 1 : 1 + Math.pow((p - 13.2) / 1.8, 2)
@@ -250,6 +185,24 @@ Item {
         }
         readonly property int cycleNo: Math.floor(scene.clock / cycle)
         onCycleNoChanged: mode = (mode + 1) % modes.length
+        readonly property bool moving: phase < 4.3 || phase > 13.1
+
+        // the characters are drawn white, this shader colors them (so the color wave costs no CPU)
+        layer.enabled: active
+        layer.effect: ShaderEffect {
+            readonly property size size: Qt.size(ascii.width, ascii.height)
+            readonly property point origin: Qt.point(ascii.ox, ascii.oy)
+            readonly property size cellSize: Qt.size(ascii.cw, ascii.ch)
+            readonly property real cols: ascii.cols
+            readonly property real shimmer: ascii.shimmer
+            readonly property color fg: scene.foreground
+            readonly property color accent: scene.accent
+            readonly property color c0: scene.col(0)
+            readonly property color c1: scene.col(1)
+            readonly property color c2: scene.col(2)
+            readonly property color c3: scene.col(3)
+            fragmentShader: "../shaders/logo.frag.qsb"
+        }
 
         Repeater {
             model: ascii.active ? ascii.cells : []
@@ -276,10 +229,8 @@ Item {
                 // decrypt: random glyphs until the cell settles
                 text: kind === "decrypt" && p < 1 && p > 0 ? ascii.noise[Math.floor((m.seed * 97 + ascii.t * 60)) % ascii.noise.length] : m.ch
                 opacity: (kind === "decrypt" || kind === "sweep" ? (p > 0 ? 1 : 0) : Math.min(1, p * 1.5)) * (1 - out)
-                // color: gradient across the logo, a wave running through it while it stands
-                readonly property real g: (m.c / ascii.cols + ascii.shimmer) % 1
-                color: kind === "sweep" && p < 1 ? scene.foreground
-                     : Qt.tint(scene.col(Math.floor(g * 4)), Qt.alpha(scene.accent, 0.35 + 0.25 * Math.sin((g + m.r * 0.05) * Math.PI * 2)))
+                // magenta marks characters still being swept in: the shader draws them in the text color
+                color: kind === "sweep" && p < 1 ? "#ff00ff" : "white"
             }
         }
     }
