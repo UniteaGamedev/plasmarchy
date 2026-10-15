@@ -46,8 +46,13 @@ CONFIG = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".con
 
 
 def authenticated():
-    """Both parts of the sign in: librespot's credentials (playback) and the Web API token (search, library)."""
-    return os.path.isfile(os.path.join(CACHE, "credentials.json")) and bool(glob.glob(os.path.join(CACHE, "*token*.json")))
+    """Every part of the sign in: librespot's credentials (playback), the Web API token of the configured app
+    (search, library) and, if it is a different one, the shared app's token (spotify_player reads playlists
+    through it)."""
+    if not os.path.isfile(os.path.join(CACHE, "credentials.json")):
+        return False
+    ids = {client_id() or "d420a117a32841c2b3474932e49fb54b", "d420a117a32841c2b3474932e49fb54b"}
+    return all(os.path.isfile(os.path.join(CACHE, f"{i}_token.json")) for i in ids)
 
 
 SHARED_CLIENT_IDS = {"", "d420a117a32841c2b3474932e49fb54b", "65b708073fc0480ea92a077233ca87bd"}
@@ -433,8 +438,12 @@ def login():
     if not binary():
         raise SystemExit(tr("spotify-player is not installed (sudo pacman -S spotify-player)"))
     stop()
-    if subprocess.run([binary(), "authenticate"]).returncode != 0:
-        raise SystemExit(tr("Spotify command failed"))
+    # The playback sign in (shown by Spotify as "ncspot", it must use a client id Spotify allows for playback)
+    # is needed only once. If it is saved already, just restart the player: it asks in the browser only for the
+    # missing Web API token (shown as your own app's name).
+    if not os.path.isfile(os.path.join(CACHE, "credentials.json")):
+        if subprocess.run([binary(), "authenticate"]).returncode != 0:
+            raise SystemExit(tr("Spotify command failed"))
     spawn([binary(), "--daemon", "-o", f'device.name="{DEVICE}"', "-o", "device.volume=80"], "spotify", forking=True)
     for _ in range(120):
         if authenticated():
@@ -454,8 +463,8 @@ def set_client_id(client_id):
     text = re.sub(r'(?m)^client_id\s*=.*$', line, text) if re.search(r"(?m)^client_id\s*=", text) else line + "\n" + text
     os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
     open(CONFIG, "w").write(text)
-    for f in glob.glob(os.path.join(CACHE, "*token*.json")):   # the old app's token
-        os.remove(f)
+    # no tokens are deleted: they are stored per client id, and spotify_player keeps using the shared (ncspot)
+    # app's token for reading playlists (ncspot_only_get_endpoints), so that one must stay
     login()
 
 

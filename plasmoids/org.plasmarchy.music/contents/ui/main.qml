@@ -572,7 +572,7 @@ PlasmoidItem {
                     spacing: Kirigami.Units.smallSpacing
                     PC3.BusyIndicator { running: parent.visible; implicitWidth: Kirigami.Units.iconSizes.small; implicitHeight: implicitWidth }
                     PC3.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap
-                                text: i18n("Confirm the connection to “Plasmarchy” in your browser …") }
+                                text: i18n("Confirm in your browser. Spotify may ask more than once, also for “ncspot”: that is the player itself …") }
                 }
                 PC3.Label {
                     visible: root.error !== ""
