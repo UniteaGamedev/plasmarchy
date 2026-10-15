@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "Spotify jest połączony. Możesz zamknąć to okno.",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "Spotify ogranicza teraz zapytania wspólnej aplikacji. Z własną darmową aplikacją Spotify problem znika: plasmarchy music client-id",
  "Spotify isn't set up yet": "Spotify nie jest jeszcze skonfigurowany",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "Spotify odpowiada niezawodnie tylko z Twoją własną, darmową aplikacją, bo ze wspólnej korzysta zbyt wiele osób. Zajmuje to około dwóch minut.",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "Spotify wymaga własnej, darmowej aplikacji. Konfiguracja zajmuje około dwóch minut.",
  "Start after:": "Uruchom po:",
  "Start now": "Uruchom teraz",
  "Start or end a conversation with the AI assistant": "Rozpocznij lub zakończ rozmowę z asystentem SI",

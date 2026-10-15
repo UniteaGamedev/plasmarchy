@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "Spotify on yhdistetty. Voit sulkea tämän ikkunan.",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "Spotify rajoittaa nyt jaetun sovelluksen pyyntöjä. Omalla ilmaisella Spotify-sovelluksella ongelma poistuu: plasmarchy music client-id",
  "Spotify isn't set up yet": "Spotifyta ei ole vielä otettu käyttöön",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "Spotify vastaa luotettavasti vain omalle ilmaiselle sovellukselle, koska jaettua käyttää liian moni. Tämä vie noin kaksi minuuttia.",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "Spotify tarvitsee oman ilmaisen sovelluksen. Käyttöönotto vie noin kaksi minuuttia.",
  "Start after:": "Käynnistä kun on kulunut:",
  "Start now": "Käynnistä nyt",
  "Start or end a conversation with the AI assistant": "Aloita tai lopeta keskustelu tekoälyavustajan kanssa",

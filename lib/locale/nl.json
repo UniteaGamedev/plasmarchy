@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "Spotify is verbonden. Je kunt dit venster sluiten.",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "Spotify beperkt nu de verzoeken van de gedeelde app. Met je eigen gratis Spotify-app is dat opgelost: plasmarchy music client-id",
  "Spotify isn't set up yet": "Spotify is nog niet ingesteld",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "Spotify antwoordt alleen betrouwbaar met je eigen gratis app, omdat de gedeelde app door te veel mensen wordt gebruikt. Dit duurt ongeveer twee minuten.",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "Spotify heeft je eigen gratis app nodig. Instellen duurt ongeveer twee minuten.",
  "Start after:": "Starten na:",
  "Start now": "Nu starten",
  "Start or end a conversation with the AI assistant": "Een gesprek met de AI-assistent starten of beëindigen",

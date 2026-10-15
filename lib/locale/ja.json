@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "Spotify に接続しました。このウィンドウは閉じてかまいません。",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "Spotify が共有アプリからのリクエストを制限しています。無料の自分用 Spotify アプリを使えば解消します: plasmarchy music client-id",
  "Spotify isn't set up yet": "Spotify はまだ設定されていません",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "共有アプリは利用者が多すぎるため、Spotify は自分専用の無料アプリでないと安定して応答しません。2 分ほどで終わります。",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "Spotify には自分専用の無料アプリが必要です。設定は 2 分ほどで終わります。",
  "Start after:": "開始までの時間：",
  "Start now": "今すぐ開始",
  "Start or end a conversation with the AI assistant": "AI アシスタントとの会話を開始または終了",

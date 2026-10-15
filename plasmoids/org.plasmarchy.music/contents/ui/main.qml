@@ -487,7 +487,7 @@ PlasmoidItem {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     opacity: 0.7
-                    text: i18n("Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.")
+                    text: i18n("Spotify needs your own free app. Setting it up takes about two minutes.")
                 }
                 // 1. portal
                 RowLayout {

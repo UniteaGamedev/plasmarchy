@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "Spotify 已連線。你可以關閉這個視窗。",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "Spotify 正在限制共用應用程式的請求。使用你自己的免費 Spotify 應用程式就能解決：plasmarchy music client-id",
  "Spotify isn't set up yet": "Spotify 尚未設定",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "共用應用程式的使用者太多，Spotify 只對你自己的免費應用程式穩定回應。大約需要兩分鐘。",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "Spotify 需要你自己的免費應用程式。設定大約需要兩分鐘。",
  "Start after:": "啟動前等待：",
  "Start now": "立即啟動",
  "Start or end a conversation with the AI assistant": "開始或結束與 AI 助理的對話",

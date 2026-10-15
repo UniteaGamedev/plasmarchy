@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "Spotify підключено. Це вікно можна закрити.",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "Spotify зараз обмежує запити спільного застосунку. З власним безкоштовним застосунком Spotify цього не буде: plasmarchy music client-id",
  "Spotify isn't set up yet": "Spotify ще не налаштовано",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "Spotify надійно відповідає лише власному безкоштовному застосунку: спільним користується забагато людей. Це займе близько двох хвилин.",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "Для Spotify потрібен власний безкоштовний застосунок. Налаштування займе близько двох хвилин.",
  "Start after:": "Запускати через:",
  "Start now": "Запустити зараз",
  "Start or end a conversation with the AI assistant": "Почати або завершити розмову з ШІ-асистентом",

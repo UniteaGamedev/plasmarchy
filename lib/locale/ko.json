@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "Spotify가 연결되었습니다. 이 창을 닫아도 됩니다.",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "Spotify가 지금 공유 앱의 요청을 제한하고 있습니다. 무료로 만든 내 Spotify 앱을 쓰면 해결됩니다: plasmarchy music client-id",
  "Spotify isn't set up yet": "Spotify가 아직 설정되지 않았습니다",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "공유 앱은 사용하는 사람이 너무 많아서 Spotify는 내 무료 앱으로만 안정적으로 응답합니다. 2분 정도 걸립니다.",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "Spotify를 쓰려면 내 무료 앱이 필요합니다. 설정은 2분 정도 걸립니다.",
  "Start after:": "시작 시간:",
  "Start now": "지금 시작",
  "Start or end a conversation with the AI assistant": "AI 도우미와의 대화 시작 또는 종료",

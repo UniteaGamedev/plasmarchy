@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "A Spotify csatlakoztatva. Bezárhatod ezt az ablakot.",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "A Spotify most korlátozza a közös alkalmazás kéréseit. Saját, ingyenes Spotify alkalmazással ez megszűnik: plasmarchy music client-id",
  "Spotify isn't set up yet": "A Spotify még nincs beállítva",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "A Spotify csak saját, ingyenes alkalmazással válaszol megbízhatóan, mert a közöset túl sokan használják. Körülbelül két percig tart.",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "A Spotifyhoz saját, ingyenes alkalmazás kell. A beállítás körülbelül két percig tart.",
  "Start after:": "Indítás ennyi után:",
  "Start now": "Indítás most",
  "Start or end a conversation with the AI assistant": "Beszélgetés indítása vagy befejezése az MI asszisztenssel",

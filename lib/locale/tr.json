@@ -324,7 +324,7 @@
  "Spotify is connected. You can close this window.": "Spotify bağlandı. Bu pencereyi kapatabilirsiniz.",
  "Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id": "Spotify şu anda ortak uygulamanın isteklerini sınırlıyor. Kendi ücretsiz Spotify uygulamanızla bu sorun ortadan kalkar: plasmarchy music client-id",
  "Spotify isn't set up yet": "Spotify henüz kurulmadı",
- "Spotify only answers reliably with your own free app, because the shared one is used by too many people. This takes about two minutes.": "Spotify yalnızca kendi ücretsiz uygulamanızla güvenilir yanıt verir, çünkü ortak uygulamayı çok fazla kişi kullanıyor. Yaklaşık iki dakika sürer.",
+ "Spotify needs your own free app. Setting it up takes about two minutes.": "Spotify için kendi ücretsiz uygulamanız gerekir. Kurulum yaklaşık iki dakika sürer.",
  "Start after:": "Şu süre sonra başlat:",
  "Start now": "Şimdi başlat",
  "Start or end a conversation with the AI assistant": "Yapay zekâ asistanıyla bir sohbet başlat veya bitir",
