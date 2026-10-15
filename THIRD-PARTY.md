@@ -11,6 +11,8 @@
 | Piper voices (Thorsten, Kerstin, Ramona, Ryan, Amy, Alba) | [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) | per voice, see its model card | no – downloaded on selection |
 | openWakeWord + bundled wake word models | [dscripka/openWakeWord](https://github.com/dscripka/openWakeWord) | Apache-2.0 (code); models CC BY-NC-SA 4.0 | no – installed when a wake word is chosen |
 | Ollama + local model (default qwen3:4b) | [ollama/ollama](https://github.com/ollama/ollama), [Qwen](https://huggingface.co/Qwen) | MIT / Apache-2.0 | no – `plasmarchy llm setup` |
+| terminaltexteffects (screensaver) | [ChrisBuilds/terminaltexteffects](https://github.com/ChrisBuilds/terminaltexteffects) | MIT | no – `plasmarchy screensaver setup` |
+| Screensaver concept | Omarchy (`omarchy-cmd-screensaver`) | MIT | modeled after it |
 | JetBrains Mono Nerd Font | [ryanoasis/nerd-fonts](https://github.com/ryanoasis/nerd-fonts) | OFL-1.1 | no – package `ttf-jetbrains-mono-nerd` |
 
 The rights to the wallpapers belong to their respective artists; they are passed on as in the Omarchy

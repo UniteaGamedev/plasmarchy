@@ -123,10 +123,10 @@ PlasmoidItem {
     }
 
     fullRepresentation: PlasmaExtras.Representation {
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 26
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 32
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 24   // same as the system tray popups (Wi-Fi, Bluetooth, volume)
+        Layout.preferredHeight: Kirigami.Units.gridUnit * 24
         Layout.minimumWidth: Kirigami.Units.gridUnit * 20
-        Layout.minimumHeight: Kirigami.Units.gridUnit * 22
+        Layout.minimumHeight: Kirigami.Units.gridUnit * 18
         collapseMarginsHint: true
 
         header: PlasmaExtras.PlasmoidHeading {

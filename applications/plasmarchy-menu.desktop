@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Plasmarchy Menu
+Name[de]=Plasmarchy-Menü
+Comment=Menu with apps, style, toggles, setup and system actions
+Comment[de]=Menü mit Apps, Stil, Schaltern, Einrichtung und System-Aktionen
+Keywords=menu;launcher;search;plasmarchy;
+Keywords[de]=menü;starter;suche;plasmarchy;
+Exec=@BIN@ menu
+Icon=start-here-kde
+Type=Application
+Categories=Utility;
+NoDisplay=true
+X-KDE-Shortcuts=Meta+Alt+Space

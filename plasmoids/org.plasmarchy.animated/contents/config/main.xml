@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- aurora | particles | rain - written by "plasmarchy" on theme switches -->
+    <entry name="effect" type="String"><default>aurora</default></entry>
+    <entry name="background" type="String"><default>#111c18</default></entry>
+    <entry name="darkBackground" type="String"><default>#090f0d</default></entry>
+    <entry name="foreground" type="String"><default>#C1C497</default></entry>
+    <entry name="accent" type="String"><default>#509475</default></entry>
+    <!-- further palette colors, comma separated -->
+    <entry name="palette" type="String"><default>#2DD5B7,#D2689C,#549e6a,#8CD3CB</default></entry>
+    <entry name="logo" type="String"><default></default></entry>
+    <!-- bumped when the logo changes (image cache) -->
+    <entry name="logoVersion" type="Int"><default>0</default></entry>
+    <entry name="showLogo" type="Bool"><default>true</default></entry>
+    <entry name="speed" type="Double"><default>1.0</default></entry>
+    <entry name="pauseWhenCovered" type="Bool"><default>true</default></entry>
+  </group>
+</kcfg>

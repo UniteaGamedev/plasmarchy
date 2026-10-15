@@ -39,7 +39,7 @@ def unique_slug(name):
     return slug
 
 
-def write_theme(slug, name, mode, folder, palette, bgs):
+def write_theme(slug, name, mode, folder, palette, bgs, animation=""):
     if mode not in ("dark", "light"):
         raise SystemExit(tr("mode must be dark or light"))
     if folder not in FOLDER_COLORS:
@@ -56,6 +56,8 @@ def write_theme(slug, name, mode, folder, palette, bgs):
                 f.write(f'{k} = "{palette[k]}"\n')
     with open(os.path.join(d, "kde.conf"), "w") as f:
         f.write(f'NAME="{name}"\nFOLDER_COLOR={folder}\n')
+        if animation in ("aurora", "particles", "rain"):
+            f.write(f"ANIMATION={animation}\n")
     with open(os.path.join(d, "backgrounds.list"), "w") as f:
         f.write("".join(os.path.expanduser(b) + "\n" for b in bgs if os.path.isfile(os.path.expanduser(b))))
     return slug
@@ -65,7 +67,8 @@ def cmd_new(name, template="osaka-jade"):
     c = load_colors(template)
     slug = unique_slug(name)
     write_theme(slug, name, c["mode"], load_kde_conf(template).get("FOLDER_COLOR", "blue"),
-                {k: c[k] for k in PALETTE_KEYS if k in c}, backgrounds(template))
+                {k: c[k] for k in PALETTE_KEYS if k in c}, backgrounds(template),
+                load_kde_conf(template).get("ANIMATION", ""))
     print(slug)
 
 
@@ -80,7 +83,8 @@ def cmd_save(slug, path):
         # Built-in themes stay untouched: changes are saved as a custom copy
         slug = unique_slug(data.get("name") or display_name(slug))
     write_theme(slug, data.get("name") or display_name(slug), data.get("mode", "dark"),
-                data.get("folder", "blue"), data.get("palette", {}), data.get("backgrounds", []))
+                data.get("folder", "blue"), data.get("palette", {}), data.get("backgrounds", []),
+                data.get("animation", ""))
     print(slug)
 
 

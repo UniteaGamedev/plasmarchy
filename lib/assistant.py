@@ -17,6 +17,7 @@ Settings (~/.config/plasmarchy/assistant.conf):
   PROVIDER_ORDER="claude cursor codex gemini local" fallback order
   LOCAL_MODEL=qwen3:4b                              Ollama model
   ACTIONS=off|on                                    allow selected desktop actions (Claude only)
+  FAST_VOICE=on|off                                 use Claude's fastest model (Haiku) in conversations
 """
 import base64
 import json
@@ -159,7 +160,10 @@ def run_cli(provider, text, new, voice):
     b = provider["bin"]
     pid = provider["id"]
     if pid == "claude":
-        cmd = [b, "-p", "--output-format", "json", "--append-system-prompt", system_prompt(voice)]
+        # No MCP servers: the assistant doesn't need them and loading them costs about a second per question
+        cmd = [b, "-p", "--output-format", "json", "--strict-mcp-config", "--append-system-prompt", system_prompt(voice)]
+        if voice and config().get("FAST_VOICE", "on") == "on":
+            cmd += ["--model", "haiku"]   # conversations: short answers, latency matters more than depth
         if config().get("ACTIONS") == "on":
             cmd += ["--allowedTools", "Bash(plasmarchy:*)", "Bash(xdg-open:*)"]
         if not new:

@@ -15,7 +15,7 @@ Window {
 
     readonly property var args: Qt.application.arguments
     function tr(text, ...args) { return I18n.tr(Qt.resolvedUrl("locale/"), text, args) }
-    property var st: ({ state: "listening", user: "", answer: "", note: "" })
+    property var st: ({ state: "listening", user: "", answer: "", note: "", hint: "" })
     property var c: ({ background: "#111111", foreground: "#dddddd", accent: "#88aaff", muted: "#666666" })
     readonly property var labels: ({ listening: tr("Listening …"), thinking: tr("Thinking …"), speaking: "",
                                      error: "", done: "" })
@@ -112,7 +112,7 @@ Window {
                     Text {
                         width: parent.width
                         visible: win.st.user !== ""
-                        text: "„" + win.st.user + "“"
+                        text: "“" + win.st.user + "”"
                         color: win.c.muted
                         wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
                         font.pixelSize: 15
@@ -135,6 +135,15 @@ Window {
                         wrapMode: Text.WordWrap; maximumLineCount: 6; elide: Text.ElideRight
                         textFormat: Text.MarkdownText
                         font.pixelSize: 17
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Text {
+                        width: parent.width
+                        visible: !!win.st.hint
+                        text: win.st.hint || ""
+                        color: win.c.muted
+                        opacity: 0.7
+                        font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 12
                         horizontalAlignment: Text.AlignHCenter
                     }
                 }

@@ -1,0 +1,19 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Plasmarchy"
+            }
+        ],
+        "Description": "Animated wallpapers in the colors of the Plasmarchy theme, with your logo",
+        "Description[de]": "Animierte Hintergründe in den Farben des Plasmarchy-Themes, mit deinem Logo",
+        "Icon": "preferences-desktop-wallpaper",
+        "Id": "org.plasmarchy.animated",
+        "License": "MIT",
+        "Name": "Plasmarchy Animated",
+        "Name[de]": "Plasmarchy animiert",
+        "Version": "1.0"
+    },
+    "KPackageStructure": "Plasma/Wallpaper",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

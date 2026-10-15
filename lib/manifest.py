@@ -41,6 +41,7 @@ def main():
             "user": is_user_theme(slug),
             "builtin": is_builtin_theme(slug),
             "folder": load_kde_conf(slug).get("FOLDER_COLOR", "blue"),
+            "animation": load_kde_conf(slug).get("ANIMATION", ""),
             "palette": {k: c[k] for k in PALETTE_KEYS if k in c},
             "colors": [c[k] for k in ("background", "accent", "red", "green", "yellow", "blue", "magenta", "cyan") if k in c],
         })

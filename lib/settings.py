@@ -41,9 +41,10 @@ MODELS = {"base": "Fast (base, 142 MB)", "small": "Balanced (small, 466 MB)",
 WAKE_WORDS = {"off": "Off (hotkey only)", "hey_jarvis": "“Hey Jarvis”", "alexa": "“Alexa”",
               "hey_mycroft": "“Hey Mycroft”", "hey_marvin": "“Hey Marvin”"}
 KEYS = {"PROVIDER", "PROVIDER_ORDER", "LOCAL_MODEL", "ACTIONS", "SPEAK_ANSWERS", "NOTIFY_LEFT", "VOICE_MODEL",
-        "VOICE_TTS", "VOICE_SOURCE", "VOICE_LANG", "WAKE_WORD", "WAKE_SENSITIVITY", "FOLLOW_UP", "HOTKEY"}
+        "VOICE_TTS", "VOICE_SOURCE", "VOICE_LANG", "WAKE_WORD", "WAKE_SENSITIVITY", "FOLLOW_UP", "HOTKEY", "FAST_VOICE"}
 DEFAULTS = {"SPEAK_ANSWERS": "off", "NOTIFY_LEFT": "20 5", "WAKE_WORD": "off", "WAKE_SENSITIVITY": "0.5",
-            "FOLLOW_UP": "8", "HOTKEY": "Meta+Shift+Space"}
+            "FOLLOW_UP": "8", "HOTKEY": "Meta+Shift+Space",
+            "FAST_VOICE": "on"}
 
 
 def read_conf():
@@ -150,7 +151,7 @@ def get():
                  "running": subprocess.run(["systemctl", "--user", "is-active", "plasmarchy-wake.service"],
                                            capture_output=True, text=True).stdout.strip() == "active",
                  "words": [{"id": k, "name": tr(v)} for k, v in WAKE_WORDS.items()]},
-        "hotkey": c["HOTKEY"],
+        "hotkey": c["HOTKEY"], "fastVoice": c["FAST_VOICE"] == "on",
     }
 
 

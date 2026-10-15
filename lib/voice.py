@@ -56,12 +56,24 @@ def conf():
     return c
 
 
+def nvcc():
+    return shutil.which("nvcc") or next((p for p in ("/opt/cuda/bin/nvcc", "/usr/local/cuda/bin/nvcc")
+                                         if os.path.isfile(p)), None)
+
+
+def whisper_bin():
+    """GPU build (CUDA) if present - several times faster, especially for the larger models."""
+    base = os.path.join(DATA, "whisper.cpp")
+    gpu = os.path.join(base, "build-cuda", "bin", "whisper-cli")
+    return gpu if os.path.isfile(gpu) else os.path.join(base, "build", "bin", "whisper-cli")
+
+
 def paths():
     c = conf()
     region, name, quality = c["VOICE_TTS"].split("-", 2)      # e.g. de_DE, thorsten, medium
     lang = region.split("_")[0]
     return {
-        "whisper": os.path.join(DATA, "whisper.cpp", "build", "bin", "whisper-cli"),
+        "whisper": whisper_bin(),
         "model": os.path.join(DATA, "models", f"ggml-{c['VOICE_MODEL']}.bin"),
         "piper": os.path.join(DATA, "piper", "piper"),
         "voice": os.path.join(DATA, "voices", c["VOICE_TTS"] + ".onnx"),
@@ -120,13 +132,34 @@ def setup():
             subprocess.run([os.path.join(venv, "bin", "pip"), "install", "-q", "cmake"], check=True)
             cmake = os.path.join(venv, "bin", "cmake")
         print("  " + tr("building whisper.cpp (takes a few minutes) …"), flush=True)
-        subprocess.run([cmake, "-S", src, "-B", os.path.join(src, "build"), "-DCMAKE_BUILD_TYPE=Release",
-                        "-DBUILD_SHARED_LIBS=OFF", "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_EXAMPLES=ON"],
-                       check=True, stdout=subprocess.DEVNULL)
-        subprocess.run([cmake, "--build", os.path.join(src, "build"), "-j", str(os.cpu_count() or 4),
-                        "--target", "whisper-cli"], check=True, stdout=subprocess.DEVNULL)
+        build(cmake, src, "build", [])
+        if nvcc():   # NVIDIA GPU: additional CUDA build (optional - the CPU build stays as fallback)
+            print("  " + tr("building the GPU version (CUDA, takes a while longer) …"), flush=True)
+            try:
+                build(cmake, src, "build-cuda", ["-DGGML_CUDA=ON", "-DCMAKE_CUDA_ARCHITECTURES=native"],
+                      {"CUDACXX": nvcc(), "PATH": os.path.dirname(nvcc()) + ":" + os.environ.get("PATH", "")})
+            except subprocess.CalledProcessError:
+                print("  " + tr("GPU build failed - using the CPU version"), flush=True)
+    elif nvcc() and "build-cuda" not in whisper_bin():   # existing CPU install: add the GPU build
+        cmake = shutil.which("cmake") or os.path.join(DATA, "buildenv", "bin", "cmake")
+        print("  " + tr("building the GPU version (CUDA, takes a while longer) …"), flush=True)
+        try:
+            build(cmake, os.path.join(DATA, "whisper.cpp"), "build-cuda",
+                  ["-DGGML_CUDA=ON", "-DCMAKE_CUDA_ARCHITECTURES=native"],
+                  {"CUDACXX": nvcc(), "PATH": os.path.dirname(nvcc()) + ":" + os.environ.get("PATH", "")})
+        except subprocess.CalledProcessError:
+            print("  " + tr("GPU build failed - using the CPU version"), flush=True)
     download(f"{MODELS}/ggml-{conf()['VOICE_MODEL']}.bin", p["model"])
     print(json.dumps(status()))
+
+
+def build(cmake, src, name, flags, env=None):
+    env = dict(os.environ, **(env or {}))
+    subprocess.run([cmake, "-S", src, "-B", os.path.join(src, name), "-DCMAKE_BUILD_TYPE=Release",
+                    "-DBUILD_SHARED_LIBS=OFF", "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_EXAMPLES=ON", *flags],
+                   check=True, stdout=subprocess.DEVNULL, env=env)
+    subprocess.run([cmake, "--build", os.path.join(src, name), "-j", str(os.cpu_count() or 4),
+                    "--target", "whisper-cli", "whisper-server"], check=True, stdout=subprocess.DEVNULL, env=env)
 
 
 def set_conf(key, value):
@@ -181,11 +214,17 @@ def record_start():
 LISTEN_PID = os.path.join(RUN, "plasmarchy-voice-listen.pid")
 
 
-def listen(max_wait=30.0, max_len=25.0, silence=1.1):
+# Set by the conversation session (hotkey pressed again): finish the current utterance right away
+LISTEN = {"started": False, "send": False}
+
+
+def listen(max_wait=30.0, max_len=20.0, silence=0.8):
     """Conversation mode: wait for speech, record until a speech pause, transcribe.
-    The level is measured in the speech band (high-pass); the noise floor is calibrated first."""
+    The level is measured in the speech band (high-pass). The end of speech is detected relative to both the
+    noise floor and the speaker's own level, so a noisy fan doesn't keep the recording open."""
     import array
     stop_speaking()
+    LISTEN.update(started=False, send=False)
     target = conf()["VOICE_SOURCE"]
     if target == "auto":
         target = detect_mic().get("source", "auto")
@@ -197,7 +236,8 @@ def listen(max_wait=30.0, max_len=25.0, silence=1.1):
     frame = 480                      # 30 ms at 16 kHz
     prev_x = prev_y = 0.0
     floor, calib, frames = None, [], []
-    started, quiet, waited = False, 0.0, 0.0
+    started, quiet, waited, voiced = False, 0.0, 0.0, 0.0
+    speech = 0.0                     # running speech level (peak-following)
     try:
         while True:
             data = proc.stdout.read(frame * 2)
@@ -212,21 +252,32 @@ def listen(max_wait=30.0, max_len=25.0, silence=1.1):
             rms = (energy / frame) ** 0.5
             if floor is None:
                 calib.append(rms)
-                if len(calib) >= 12:  # ~0.36 s noise floor
+                if len(calib) >= 8:   # ~0.24 s noise floor
                     floor = max(sorted(calib)[len(calib) // 2], 30.0)
                 continue
-            loud = rms > floor * 2.6
             if not started:
                 waited += 0.03
                 frames = (frames + [data])[-20:]   # keep 0.6 s pre-roll (word onset)
-                if loud:
-                    started = True
-                elif waited > max_wait:
-                    return {"timeout": True}
+                if rms > floor * 2.6:
+                    voiced += 0.03
+                    if voiced >= 0.09:   # 3 loud frames in a row: speech, not a click
+                        started = True
+                        LISTEN["started"] = True
+                        speech = rms
+                else:
+                    voiced = 0.0
+                    floor = floor * 0.98 + rms * 0.02   # follow slow changes of the background noise
+                    if waited > max_wait:
+                        return {"timeout": True}
+                if LISTEN["send"]:
+                    break
                 continue
             frames.append(data)
+            speech = max(rms, speech * 0.995)   # decays slowly between words
+            # Speech continues while clearly above the noise floor AND not far below the speaker's level
+            loud = rms > max(floor * 2.2, speech * 0.12)
             quiet = 0.0 if loud else quiet + 0.03
-            if quiet >= silence or len(frames) * 0.03 >= max_len:
+            if LISTEN["send"] or quiet >= silence or len(frames) * 0.03 >= max_len:
                 break
     finally:
         proc.terminate()
@@ -269,15 +320,78 @@ def transcribe():
         source_wav = clean
     else:
         source_wav = REC_WAV
-    out = subprocess.run([p["whisper"], "-m", p["model"], "-f", source_wav, "-l", conf()["VOICE_LANG"],
-                          "-nt", "-np", "-t", str(min(8, os.cpu_count() or 4))],
-                         capture_output=True, text=True)
-    text = " ".join(line.strip() for line in out.stdout.splitlines() if line.strip())
+    text = server_transcribe(source_wav)
+    if text is None:   # no conversation server running: one-off run (loads the model each time)
+        out = subprocess.run([p["whisper"], "-m", p["model"], "-f", source_wav, "-l", conf()["VOICE_LANG"],
+                              "-nt", "-np", "-t", str(min(8, os.cpu_count() or 4))],
+                             capture_output=True, text=True)
+        text = " ".join(line.strip() for line in out.stdout.splitlines() if line.strip())
     # Never send Whisper's noise placeholders ([MUSIC], *knocking*, (noise) ...) as a message
     text = re.sub(r"\[[^\]]*\]|\*[^*]*\*|\([^)]*\)", "", text).strip(" .,!?-")
     if not text:
         return {"error": tr("Didn't catch that – speak a bit closer to the microphone (check it in the settings)")}
     return {"text": text}
+
+
+# --- Recognition server for conversations ------------------------------------------------------------
+# A conversation keeps whisper-server running: the model is loaded (and a sleeping GPU woken up) while the
+# user is still speaking, so only the recognition itself remains on the critical path.
+SERVER_PORT = 8178
+SERVER_PID = os.path.join(RUN, "plasmarchy-whisper-server.pid")
+
+
+def server_start():
+    srv = os.path.join(os.path.dirname(paths()["whisper"]), "whisper-server")
+    if not os.path.isfile(srv) or not status()["stt"]:
+        return None
+    proc = subprocess.Popen([srv, "-m", paths()["model"], "-l", conf()["VOICE_LANG"], "--host", "127.0.0.1",
+                             "--port", str(SERVER_PORT), "-nt", "-t", str(min(8, os.cpu_count() or 4))],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    open(SERVER_PID, "w").write(str(proc.pid))
+    return proc
+
+
+def server_stop(proc):
+    if proc:
+        proc.terminate()
+    try:
+        os.remove(SERVER_PID)
+    except OSError:
+        pass
+
+
+def server_alive():
+    try:
+        pid = int(open(SERVER_PID).read())
+        return b"whisper-server" in open(f"/proc/{pid}/cmdline", "rb").read()
+    except (OSError, ValueError):
+        return False
+
+
+def server_transcribe(wav, wait=20.0):
+    """Text from the conversation server, or None if none is running (caller falls back to whisper-cli)."""
+    import time
+    import urllib.error
+    if not server_alive():
+        return None
+    boundary = "plasmarchy" + os.urandom(8).hex()
+    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n"
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\n"
+            f"Content-Type: audio/wav\r\n\r\n").encode() + open(wav, "rb").read() + f"\r\n--{boundary}--\r\n".encode()
+    deadline = time.time() + wait
+    while True:
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{SERVER_PORT}/inference", data=body,
+                                         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+            data = json.load(urllib.request.urlopen(req, timeout=60))
+            return " ".join(data.get("text", "").split())
+        except (urllib.error.URLError, ConnectionError) as e:
+            # still loading the model: the port isn't open yet
+            if time.time() > deadline or not server_alive():
+                return None
+            time.sleep(0.15)
+        except (OSError, ValueError):
+            return None
 
 
 def plain(text):

@@ -101,3 +101,19 @@ def backgrounds(slug):
     if os.path.isfile(listing):
         files += [p.strip() for p in open(listing) if p.strip() and os.path.isfile(os.path.expanduser(p.strip()))]
     return [os.path.expanduser(f) for f in files]
+
+
+def current_theme():
+    state = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.join(HOME, ".local/state")), "plasmarchy", "current")
+    try:
+        return open(state).readline().strip() or "osaka-jade"
+    except OSError:
+        return "osaka-jade"
+
+
+def current_colors():
+    """Palette of the active theme (falls back to neutral colors)."""
+    try:
+        return load_colors(current_theme())
+    except Exception:
+        return {"background": "#111111", "foreground": "#dddddd", "accent": "#88aaff", "muted": "#666666"}

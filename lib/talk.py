@@ -3,7 +3,8 @@
 
 Flow: listen until a speech pause -> AI answer (short, meant to be spoken) -> read aloud -> keep listening for
 FOLLOW_UP seconds for follow-up questions -> otherwise end. Meanwhile talk.qml shows the state at the bottom.
-Stop: "stop"/"thanks" (also German), pressing the hotkey again (second call), or the stop command.
+Pressing the hotkey again (second call) sends the utterance right away once you have spoken; before that, or
+while the answer is being read, it ends the session. Saying "stop"/"thanks" (also German) ends it as well.
 The microphone is only open during a session.
 """
 import base64
@@ -33,11 +34,20 @@ def is_stop(text):
 
 overlay = None
 stopping = False
+state = "listening"
 
 
-def status(state, user="", answer="", note=""):
+def hotkey():
+    return voice.conf().get("HOTKEY", "Meta+Shift+Space")
+
+
+def status(new_state, user="", answer="", note=""):
+    global state
+    state = new_state
+    hint = tr("Press {0} again to send", hotkey()) if new_state == "listening" else ""
     tmp = STATUS + ".tmp"
-    json.dump({"state": state, "user": user, "answer": answer, "note": note}, open(tmp, "w"), ensure_ascii=False)
+    json.dump({"state": new_state, "user": user, "answer": answer, "note": note, "hint": hint},
+              open(tmp, "w"), ensure_ascii=False)
     os.replace(tmp, STATUS)
 
 
@@ -45,6 +55,14 @@ def stop(*_):
     global stopping
     stopping = True
     voice.stop_speaking()          # also ends ongoing listening
+
+
+def hotkey_again(*_):
+    """Hotkey pressed during a session: send what was said so far, otherwise end the session."""
+    if state == "listening" and voice.LISTEN["started"]:
+        voice.LISTEN["send"] = True
+    else:
+        stop()
 
 
 def start_overlay(colors):
@@ -79,21 +97,23 @@ def theme_colors():
 
 def main():
     global overlay
-    # A second call (hotkey pressed again) ends the running session
+    # A second call (hotkey pressed again) is passed on to the running session
     try:
         other = int(open(PIDFILE).read())
-        # only stop it if the stored PID really is a running conversation session
+        # only signal it if the stored PID really is a running conversation session
         if b"talk.py" in open(f"/proc/{other}/cmdline", "rb").read():
-            os.kill(other, signal.SIGTERM)
+            os.kill(other, signal.SIGUSR1)
             return
     except (OSError, ValueError):
         pass
     open(PIDFILE, "w").write(str(os.getpid()))
     signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGUSR1, hotkey_again)
     signal.signal(signal.SIGINT, stop)
     st = voice.status()
     status("listening")
     overlay = start_overlay(theme_colors())
+    server = voice.server_start()   # loads the recognition model while the user speaks
     try:
         if not st["stt"]:
             status("error", note=tr("Voice isn't set up yet. In a terminal: {0}", "plasmarchy voice setup"))
@@ -122,6 +142,7 @@ def main():
             first = False
     finally:
         status("done")
+        voice.server_stop(server)
         voice.stop_speaking()
         try:
             os.remove(PIDFILE)

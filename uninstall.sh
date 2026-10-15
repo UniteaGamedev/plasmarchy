@@ -45,6 +45,8 @@ step "$(t "Resetting the look (colors, icons, wallpaper, terminal)")"
 
 step "$(t "Removing files")"
 kpackagetool6 -t Plasma/Applet -r org.plasmarchy.aiusage >/dev/null 2>&1
+kpackagetool6 -t Plasma/Applet -r org.plasmarchy.music >/dev/null 2>&1
+kpackagetool6 -t Plasma/Wallpaper -r org.plasmarchy.animated >/dev/null 2>&1
 rm -rf "$BASE" "$BIN" "${XDG_CACHE_HOME:-$HOME/.cache}/plasmarchy"
 rm -f "$HOME"/.local/share/applications/plasmarchy-*.desktop
 rm -f "$HOME"/.local/share/color-schemes/Plasmarchy*.colors "$HOME"/.local/share/konsole/Plasmarchy*
@@ -52,6 +54,7 @@ rm -rf "$HOME"/.local/share/icons/Papirus-Dark-* "$HOME"/.local/share/icons/Papi
 rm -rf "$HOME"/.local/share/plasma/desktoptheme/plasmarchy
 [ "$PURGE" = 1 ] && rm -rf "$CONF_DIR" "$STATE_DIR"
 kwriteconfig6 --file kglobalshortcutsrc --group services --group plasmarchy-talk.desktop --key _launch --delete
+kwriteconfig6 --file kglobalshortcutsrc --group services --group plasmarchy-menu.desktop --key _launch --delete
 kbuildsycoca6 >/dev/null 2>&1
 
 step "$(t "Reloading Plasma and KWin")"

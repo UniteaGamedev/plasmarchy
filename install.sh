@@ -41,7 +41,7 @@ command -v plasmashell >/dev/null && [ "$(plasmashell --version 2>/dev/null | gr
 if [ "$PACKAGES" = 1 ]; then
     step "$(t "Installing packages")"
     pkgs=(python qt6-declarative qt6-imageformats kimageformats imagemagick papirus-icon-theme
-          ttf-jetbrains-mono-nerd swayidle)
+          ttf-jetbrains-mono-nerd swayidle alacritty kdialog)
     # Rounded window corners are packaged on CachyOS only (on Arch: AUR kwin-effect-rounded-corners-git)
     pacman -Si kwin-effect-rounded-corners >/dev/null 2>&1 && pkgs+=(kwin-effect-rounded-corners) \
         || warn "$(t "kwin-effect-rounded-corners is not in the repositories - window corners stay square.")"
@@ -81,7 +81,7 @@ systemctl --user restart plasma-kglobalaccel.service >/dev/null 2>&1 || true
 kbuildsycoca6 >/dev/null 2>&1 || true
 
 # --- 4. Plasma widgets ---------------------------------------------------------------------------
-step "$(t "Installing Plasma widgets (Panel Colorizer {0}, AI assistant)" "$COLORIZER_VERSION")"
+step "$(t "Installing Plasma widgets (Panel Colorizer {0}, AI assistant, music player, animated wallpaper)" "$COLORIZER_VERSION")"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 if curl -fsSL -o "$tmp/colorizer.plasmoid" "$COLORIZER_URL"; then
     kpackagetool6 -t Plasma/Applet -u "$tmp/colorizer.plasmoid" >/dev/null 2>&1 \
@@ -89,14 +89,18 @@ if curl -fsSL -o "$tmp/colorizer.plasmoid" "$COLORIZER_URL"; then
 else
     warn "$(t "Couldn't download Panel Colorizer - the top bar/dock will be styled without rounding/colors.")"
 fi
-# Widget translations: compile the JSON catalogs into gettext files inside the package
-for cat in "$BASE"/lib/locale/*.json; do
-    lang=$(basename "$cat" .json)
-    python3 -I "$BASE/lib/i18n.py" build-mo "$lang" \
-        "$BASE/plasmoids/org.plasmarchy.aiusage/contents/locale/$lang/LC_MESSAGES/plasma_applet_org.plasmarchy.aiusage.mo"
+# Our widgets and the animated wallpaper; translations are compiled from the JSON catalogs into each package
+for pkg in "$BASE"/plasmoids/*/; do
+    id="$(basename "$pkg")"
+    type=Plasma/Applet; domain="plasma_applet_$id"
+    [ "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("KPackageStructure",""))' "$pkg/metadata.json")" = Plasma/Wallpaper ] \
+        && { type=Plasma/Wallpaper; domain="plasma_wallpaper_$id"; }
+    for cat in "$BASE"/lib/locale/*.json; do
+        lang=$(basename "$cat" .json)
+        python3 -I "$BASE/lib/i18n.py" build-mo "$lang" "$pkg/contents/locale/$lang/LC_MESSAGES/$domain.mo"
+    done
+    kpackagetool6 -t "$type" -u "$pkg" >/dev/null 2>&1 || kpackagetool6 -t "$type" -i "$pkg" >/dev/null
 done
-kpackagetool6 -t Plasma/Applet -u "$BASE/plasmoids/org.plasmarchy.aiusage" >/dev/null 2>&1 \
-    || kpackagetool6 -t Plasma/Applet -i "$BASE/plasmoids/org.plasmarchy.aiusage" >/dev/null
 
 # --- 5. Prepare themes -------------------------------------------------------------------------
 step "$(t "Generating color schemes, folder colors and previews")"
@@ -119,9 +123,11 @@ k kwinrc --group Effect-blur --key BlurStrength 10
 k kwinrc --group Effect-blur --key NoiseStrength 0
 k kwinrc --group Desktops --key Number 1
 k kwinrc --group Desktops --key Rows 1
-# The Windows key opens the search (KRunner) in the middle of the screen
+# The Windows key opens the Plasmarchy menu (Omarchy-style); KRunner stays reachable from its search
 k krunnerrc --group General --key FreeFloating true
-k kwinrc --group ModifierOnlyShortcuts --key Meta "org.kde.krunner,/App,,toggleDisplay"
+kwriteconfig6 --file kglobalshortcutsrc --group services --group plasmarchy-menu.desktop --key _launch "Meta+Alt+Space"
+k kwinrc --group ModifierOnlyShortcuts --key Meta \
+    "org.kde.kglobalaccel,/component/plasmarchy_menu_desktop,org.kde.kglobalaccel.Component,invokeShortcut,_launch"
 if pacman -Q kwin-effect-rounded-corners >/dev/null 2>&1; then
     # only the effect plugin, not its settings page (effects/configs/...)
     so="$(pacman -Ql kwin-effect-rounded-corners | awk '/\/effects\/plugins\/.*\.so$/{print $2}' | head -1)"
@@ -150,6 +156,8 @@ if [ "$LAYOUT" = 1 ]; then
     "$BIN" layout
 fi
 
+step "$(t "Setting up the screensaver")"
+"$BIN" screensaver setup >/dev/null || warn "$(t "Screensaver setup failed - retry with: {0}" "plasmarchy screensaver setup")"
 step "$(t "Enabling the idle screensaver")"
 systemctl --user daemon-reload
 systemctl --user enable plasmarchy-idle.service >/dev/null 2>&1
@@ -158,11 +166,13 @@ systemctl --user restart plasmarchy-idle.service >/dev/null 2>&1 || warn "$(t "I
 
 printf '\n\033[1;32m%s\033[0m\n' "$(t "Plasmarchy is set up.")"
 t "$(cat <<'EOF'
-  Switch theme:      app menu "Switch theme"  or  plasmarchy
-  Theme Studio:      app menu "Theme Studio"  or  plasmarchy studio
-  Search:            Windows key
+  Menu:              Windows key (search, apps, style, toggles, setup, system)
+  Switch theme:      menu "Style"  or  plasmarchy
+  Theme Studio:      menu "Style"  or  plasmarchy studio
+  Logo:              menu "Style"  or  plasmarchy branding
   AI assistant:      robot icon top right  or  Meta+Shift+A
-  Talk to your PC:   {0} (press again or say "stop" to end)
+  Talk to your PC:   {0} (press again to send, say "stop" to end)
+  Music player:      top left, appears while something plays
   Voice (optional, ~650 MB, local):     plasmarchy voice setup
   Local AI (optional, fallback AI):     plasmarchy llm setup
   Undo:              {1}

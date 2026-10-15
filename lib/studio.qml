@@ -64,6 +64,7 @@ ApplicationWindow {
         selected = idx
         var t = manifest.themes[idx]
         draft = t ? { slug: t.slug, name: t.name, mode: t.light ? "light" : "dark", folder: t.folder,
+                      animation: t.animation || "",
                       palette: Object.assign({}, t.palette), backgrounds: t.backgrounds.slice() } : null
         dirty = false
     }
@@ -235,6 +236,13 @@ ApplicationWindow {
                         model: win.manifest.folderColors
                         currentIndex: win.draft ? win.manifest.folderColors.indexOf(win.draft.folder) : 0
                         onActivated: (i) => { win.draft.folder = win.manifest.folderColors[i]; win.touch() }
+                    }
+                    Label { text: tr("Animated wallpaper") }
+                    ComboBox {
+                        readonly property var values: ["", "aurora", "particles", "rain"]
+                        model: [tr("None (still image)"), tr("Aurora"), tr("Particles"), tr("Code rain")]
+                        currentIndex: win.draft ? Math.max(0, values.indexOf(win.draft.animation || "")) : 0
+                        onActivated: (i) => { win.draft.animation = values[i]; win.touch() }
                     }
                 }
 

@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Plasmarchy"
+            }
+        ],
+        "Category": "Multimedia",
+        "Description": "Music player for the top bar: Spotify, YouTube Music, browsers and every MPRIS player",
+        "Description[de]": "Musik-Player für die obere Leiste: Spotify, YouTube Music, Browser und jeder MPRIS-Player",
+        "Icon": "media-playback-start",
+        "Id": "org.plasmarchy.music",
+        "License": "MIT",
+        "Name": "Music",
+        "Name[de]": "Musik",
+        "Version": "1.0"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

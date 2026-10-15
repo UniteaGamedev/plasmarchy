@@ -89,6 +89,7 @@ def main():
     top.location = "top"; top.height = 32; top.floating = false; top.hiding = "none";
     var kick = top.addWidget("org.kde.plasma.kickoff");
     kick.currentConfigGroup = ["General"]; kick.writeConfig("icon", "view-app-grid-symbolic");
+    {'top.addWidget("org.plasmarchy.music");  // music player, hides itself while nothing runs' if player_enabled() else ''}
     top.addWidget("org.kde.plasma.panelspacer");
     var clock = top.addWidget("org.kde.plasma.digitalclock");
     clock.currentConfigGroup = ["Appearance"];
@@ -105,7 +106,7 @@ def main():
     ai.globalShortcut = "Meta+Shift+A";     // open the AI assistant from the keyboard
     var tray = top.addWidget("org.kde.plasma.systemtray");
     tray.currentConfigGroup = ["General"];
-    tray.writeConfig("hiddenItems", {json.dumps(HIDDEN_TRAY)});
+    tray.writeConfig("hiddenItems", {json.dumps(HIDDEN_TRAY + (["org.kde.plasma.mediacontroller"] if player_enabled() else []))});
     tray.writeConfig("iconSpacing", 2);
     var ct = top.addWidget("luisbocanegra.panel.colorizer");
     ct.currentConfigGroup = ["General"];
@@ -146,6 +147,59 @@ def main():
     print(tr("Panels set up."))
 
 
+TOPBAR_CONF = os.path.join(XDG_CONFIG, "plasmarchy", "topbar.conf")
+
+
+def player_enabled():
+    try:
+        return "PLAYER=off" not in open(TOPBAR_CONF).read()
+    except OSError:
+        return True
+
+
+def player(action):
+    """Show/hide the music player in the top bar. Hiding removes it right away; showing puts it back next
+    to the menu button (needs a Plasma restart to place it there)."""
+    present = evaluate('''
+        var r = "no";
+        panels().forEach(p => { if (p.location == "top" && p.widgets().some(w => w.type == "org.plasmarchy.music")) r = "yes"; });
+        print(r);''').strip() == "yes"
+    on = (not present) if action == "toggle" else action == "on"
+    os.makedirs(os.path.dirname(TOPBAR_CONF), exist_ok=True)
+    open(TOPBAR_CONF, "w").write(f"# Top bar options (managed by plasmarchy)\nPLAYER={'on' if on else 'off'}\n")
+    # KDE's own media controller in the tray would duplicate the player -> only show it while ours is off
+    evaluate(f'''panels().forEach(p => p.widgets().forEach(w => {{
+        if (w.type != "org.kde.plasma.systemtray") return;
+        w.currentConfigGroup = ["General"];
+        var hidden = w.readConfig("hiddenItems", []).filter(x => x != "org.kde.plasma.mediacontroller");
+        if ({'true' if on else 'false'}) hidden.push("org.kde.plasma.mediacontroller");
+        w.writeConfig("hiddenItems", hidden);
+    }}));''')
+    if not on:
+        evaluate('''panels().forEach(p => p.widgets().forEach(w => { if (w.type == "org.plasmarchy.music") w.remove(); }));''')
+    elif not present:
+        order = evaluate('''
+            var r = "";
+            panels().forEach(p => {
+                if (p.location != "top") return;
+                var w = p.addWidget("org.plasmarchy.music");
+                var ids = p.widgets().filter(x => x.id != w.id).map(x => x.id);
+                var k = p.widgets().findIndex(x => x.type == "org.kde.plasma.kickoff");
+                ids.splice(k + 1, 0, w.id);   // right after the menu button
+                r = p.id + " " + ids.join(";");
+            });
+            print(r);''').strip()
+        if order:
+            panel, ids = order.split(" ", 1)
+            subprocess.run(["systemctl", "--user", "stop", "plasma-plasmashell.service"], check=False)
+            subprocess.run(["kwriteconfig6", "--file", APPLETSRC, "--group", "Containments", "--group", panel,
+                            "--group", "General", "--key", "AppletOrder", ids], check=False)
+            subprocess.run(["systemctl", "--user", "start", "plasma-plasmashell.service"], check=False)
+    subprocess.run(["notify-send", "-a", "Plasmarchy", "-i", "media-playback-start", tr("Music player"),
+                    tr("shown in the top bar") if on else tr("hidden")], check=False)
+    print("on" if on else "off")
+
+
 def restart_plasma():
     subprocess.run(["systemctl", "--user", "restart", "plasma-plasmashell"], check=False)
     for _ in range(40):   # wait until Plasma accepts scripts again
@@ -156,4 +210,7 @@ def restart_plasma():
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:2] == ["player"]:
+        player(sys.argv[2] if len(sys.argv) > 2 else "toggle")
+    else:
+        main()

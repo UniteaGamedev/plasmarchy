@@ -223,6 +223,14 @@ QQC2.ScrollView {
                 }
             }
             Field {
+                label: i18n("Conversations:")
+                PC3.Switch {
+                    text: i18n("Fast model for spoken answers (Claude Haiku)")
+                    checked: page.s ? page.s.fastVoice : true
+                    onToggled: page.set("FAST_VOICE", checked ? "on" : "off")
+                }
+            }
+            Field {
                 label: i18n("Read aloud:")
                 PC3.Switch {
                     text: i18n("Always read chat answers aloud")

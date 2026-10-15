@@ -2,12 +2,15 @@
 # Plasmarchy - an Omarchy-like look for KDE Plasma.
 #
 #   plasmarchy                      open the theme picker
+#   plasmarchy menu                 open the Plasmarchy menu (Windows key)
+#   plasmarchy toggle <feature>     player | animated | nightlight | idle
 #   plasmarchy theme <name>         apply a theme (e.g. osaka-jade)
 #   plasmarchy themes               list available themes
 #   plasmarchy next-bg              next wallpaper of the active theme
 #   plasmarchy studio               Theme Studio: create, edit and delete your own themes
 #   plasmarchy restore              go back to the look from before Plasmarchy
-#   plasmarchy screensaver          start the screensaver now
+#   plasmarchy screensaver          start the screensaver now (setup: install it)
+#   plasmarchy branding             show/change the logo (text "Name" | image <file> | edit)
 #   plasmarchy layout               set up the top bar + dock again
 #   plasmarchy ai-usage [--json]    AI usage and limits (Claude Code, Cursor)
 #   plasmarchy ask "<question>"     ask the AI assistant (connected AI, e.g. Claude Code)
@@ -152,8 +155,12 @@ apply_theme() {      # $1 theme, $2 wallpaper index (optional)
     set_konsole "$sid"
 
     mapfile -t bgs < <(themectl backgrounds "$slug")
-    if [ "${#bgs[@]}" -gt 0 ] && [ -n "${bgs[0]}" ]; then
-        idx=$(( idx % ${#bgs[@]} ))
+    [ "${#bgs[@]}" -gt 0 ] && [ -n "${bgs[0]}" ] && idx=$(( idx % ${#bgs[@]} ))
+    if [ -n "$(py animated.py apply "$slug")" ]; then
+        # Animated wallpaper on the desktop; the lock screen keeps a still image
+        [ -n "${bgs[0]:-}" ] && kwriteconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper \
+            --group org.kde.image --group General --key Image "file://$(cached_wallpaper "${bgs[$idx]}")"
+    elif [ -n "${bgs[0]:-}" ]; then
         set_wallpaper "${bgs[$idx]}"
     fi
     mkdir -p "$STATE_DIR"
@@ -246,26 +253,117 @@ studio() {           # Theme Studio: QML reports actions line by line; we run th
     done
 }
 
-screensaver() {
-    local conf="$CONF_DIR/screensaver.conf" TEXT="CachyOS" EFFECT_SECONDS=14
+screensaver() {      # Omarchy-style: tte animations of the branding logo in a fullscreen Alacritty window
+    local conf="$CONF_DIR/screensaver.conf" FONT_SIZE=14
     # shellcheck disable=SC1090
     [ -f "$conf" ] && source "$conf"
     if [ "${1:-}" = "--idle" ]; then   # automatic: not while an app inhibits (video, game, call)
         [ "$(qdbus6 org.freedesktop.PowerManagement.Inhibit /org/freedesktop/PowerManagement/Inhibit \
               org.freedesktop.PowerManagement.Inhibit.HasInhibit 2>/dev/null)" = "true" ] && return 0
     fi
+    local tte="$BASE/tte/bin/tte"
+    [ -x "$tte" ] || die "$(t "The screensaver isn't set up yet: {0}" "plasmarchy screensaver setup")"
+    command -v alacritty >/dev/null || die "$(t "Alacritty is missing (sudo pacman -S alacritty)")"
     exec 9>"$RUN/plasmarchy-screensaver.lock"
     flock -n 9 || return 0
-    local theme colors="$RUN/plasmarchy-screensaver-colors.json"
+    py branding.py ensure
+    local theme colors
     theme="$(current_theme)"; [ -n "$theme" ] || theme=osaka-jade
-    python3 -I - "$(themectl path "$theme")/colors.toml" "$colors" <<'PY'
-import json, sys, tomllib
+    # Gradient of the theme's accent and its cool/bright colors (tte wants hex without "#")
+    mapfile -t colors < <(python3 -I - "$(themectl path "$theme")/colors.toml" <<'PY'
+import sys, tomllib
 c = tomllib.load(open(sys.argv[1], "rb"))
-pal = [c[k] for k in ("accent", "cyan", "blue", "magenta", "green", "bright_cyan", "bright_blue") if k in c]
-json.dump({"background": c["background"], "foreground": c["foreground"], "muted": c["muted"],
-           "accent": c["accent"], "palette": pal}, open(sys.argv[2], "w"))
+for k in ("accent", "bright_cyan", "blue", "magenta", "accent"):
+    if k in c:
+        print(c[k].lstrip("#"))
 PY
-    QML_XHR_ALLOW_FILE_READ=1 "$QML" "$LIB/screensaver.qml" -- "$colors" "$TEXT" "$EFFECT_SECONDS" >/dev/null 2>&1
+)
+    alacritty --class PlasmarchyScreensaver,PlasmarchyScreensaver \
+        -o 'window.startup_mode="Fullscreen"' -o 'window.padding={x=0,y=0}' -o 'window.decorations="None"' \
+        -o 'colors.primary.background="#000000"' -o 'colors.primary.foreground="#ffffff"' \
+        -o 'font.normal={family="JetBrainsMono Nerd Font"}' -o "font.size=$FONT_SIZE" \
+        -o 'window.opacity=1.0' -o 'window.blur=false' -o 'mouse.hide_when_typing=true' -o 'scrolling.history=0' \
+        -e bash "$LIB/screensaver.sh" "$CONF_DIR/branding/screensaver.txt" "$tte" "${colors[@]}" >/dev/null 2>&1
+}
+
+screensaver_setup() {   # terminaltexteffects in a private Python environment (no sudo needed)
+    t "Installing {0} …" "terminaltexteffects"
+    python3 -m venv "$BASE/tte" && "$BASE/tte/bin/pip" install -q --upgrade terminaltexteffects \
+        || die "$(t "Installing {0} failed" "terminaltexteffects")"
+    py branding.py ensure
+    t "Screensaver ready. Logo: {0}" "plasmarchy branding"
+}
+
+branding() {         # logo for screensaver and animated wallpapers
+    case "${1:-}" in
+        text)  shift; py branding.py text "$@" ;;
+        image) py branding.py image "${2:?$(t "Image file missing")}" ;;
+        edit)  py branding.py ensure; "${EDITOR:-kate}" "$CONF_DIR/branding/screensaver.txt" ;;
+        ask-text)   # from the menu: dialog
+            local text
+            text="$(kdialog --title Plasmarchy --inputbox "$(t "Text for the logo (screensaver and animated wallpapers):")" \
+                    "$(py branding.py info | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["source"])')")" || return 0
+            [ -n "$text" ] && py branding.py text "$text" >/dev/null && notify "$(t "Logo updated")" "$text"
+            py animated.py refresh >/dev/null 2>&1 || true ;;
+        ask-image)
+            local file
+            file="$(kdialog --title Plasmarchy --getopenfilename "$HOME" "image/svg+xml image/png image/jpeg image/webp")" || return 0
+            [ -n "$file" ] && py branding.py image "$file" >/dev/null && notify "$(t "Logo updated")" "$(basename "$file")"
+            py animated.py refresh >/dev/null 2>&1 || true ;;
+        "")    py branding.py show; echo; t "Change it: {0}" "plasmarchy branding text \"Name\" | image <file.svg|png> | edit" ;;
+        *)     py branding.py "$@" ;;
+    esac
+}
+
+menu() {             # Omarchy-style menu (Windows key): main entries, search, apps
+    local data="$RUN/plasmarchy-menu.json" cmd
+    py menu.py "$data"
+    cmd="$(qml_run "$LIB/menu.qml" -- "$data" | sed -n 's/^.*PLASMARCHY_MENU=//p' | tail -1)"
+    [ -n "$cmd" ] && (setsid bash -c "$cmd" >/dev/null 2>&1 &)
+    return 0
+}
+
+terminal() {         # run a command in a terminal window and keep it open until a key is pressed
+    local cmd="$1 ; echo; read -n 1 -s -r -p '$(t "Press any key to close")'"
+    if command -v alacritty >/dev/null; then alacritty -e bash -c "$cmd"
+    else konsole -e bash -c "$cmd"; fi
+}
+
+assistant_open() {   # open the AI assistant popup in the top bar
+    local id
+    id="$(qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
+        'var r="";panels().forEach(p=>p.widgets().forEach(w=>{if(w.type=="org.plasmarchy.aiusage")r=w.id}));print(r)')"
+    [ -n "$id" ] && qdbus6 org.kde.kglobalaccel /component/plasmashell org.kde.kglobalaccel.Component.invokeShortcut \
+        "activate widget $id" >/dev/null
+}
+
+notify() { notify-send -a Plasmarchy -i preferences-desktop-theme-global "$@" 2>/dev/null || true; }
+
+toggle() {           # switch features on/off (menu "Toggle")
+    local on
+    case "${1:-}" in
+        player)
+            py layout.py player toggle ;;
+        animated)
+            on="$(py animated.py toggle)"
+            [ -f "$STATE" ] && apply_theme "$(head -1 "$STATE")" "$(sed -n 2p "$STATE")" >/dev/null
+            notify "$(t "Animated wallpaper")" "$([ "$on" = on ] && t "on" || t "off")" ;;
+        nightlight)
+            on="$(kreadconfig6 --file kwinrc --group NightColor --key Active)"
+            [ "$on" = true ] && on=false || on=true
+            kwriteconfig6 --file kwinrc --group NightColor --key Active "$on"
+            qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1
+            notify "$(t "Night light")" "$([ "$on" = true ] && t "on" || t "off")" ;;
+        idle)
+            if systemctl --user is-enabled --quiet plasmarchy-idle.service; then
+                systemctl --user disable --now plasmarchy-idle.service >/dev/null 2>&1
+                notify "$(t "Automatic screensaver")" "$(t "off")"
+            else
+                systemctl --user enable --now plasmarchy-idle.service >/dev/null 2>&1
+                notify "$(t "Automatic screensaver")" "$(t "on")"
+            fi ;;
+        *)  die "usage: plasmarchy toggle player|animated|nightlight|idle" ;;
+    esac
 }
 
 app() {             # launch an app by (partial) name - for the assistant's voice commands
@@ -350,7 +448,11 @@ case "${1:-pick}" in
     next-bg)        next_bg ;;
     studio)         studio ;;
     restore)        restore ;;
-    screensaver)    screensaver "${2:-}" ;;
+    screensaver)    if [ "${2:-}" = setup ]; then screensaver_setup; else screensaver "${2:-}"; fi ;;
+    branding)       branding "${@:2}" ;;
+    menu)           menu ;;
+    toggle)         toggle "${2:-}" ;;
+    terminal)       terminal "${2:?}" ;;
     idle)           idle ;;
     layout)         py layout.py ;;
     ai-usage)       py ai_usage.py "${@:2}" ;;
@@ -361,7 +463,7 @@ case "${1:-pick}" in
                             'import json,sys; d=json.load(sys.stdin); print(d.get("answer") or d.get("error"))'
                     fi ;;
     providers)      py assistant.py providers ;;
-    assistant)      py assistant.py "${@:2}" ;;
+    assistant)      if [ "${2:-}" = open ]; then assistant_open; else py assistant.py "${@:2}"; fi ;;
     voice)          py voice.py "${@:2}" ;;
     talk)           py talk.py ;;
     settings)       py settings.py "${@:2}" ;;
