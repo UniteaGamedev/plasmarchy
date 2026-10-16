@@ -162,7 +162,8 @@ apply_theme() {      # $1 theme, $2 wallpaper index (optional)
     [ "${#bgs[@]}" -gt 0 ] && [ -n "${bgs[0]}" ] && idx=$(( idx % ${#bgs[@]} ))
     # Own wallpaper (Plasmarchy settings) wins over the theme's images and animations
     local override
-    override="$(sed -n 's/^OVERRIDE=//p' "$CONF_DIR/wallpaper.conf" 2>/dev/null | tr -d '"' | tail -1)"
+    # || true: wallpaper.conf only exists once an own wallpaper was chosen (pipefail would abort)
+    override="$(sed -n 's/^OVERRIDE=//p' "$CONF_DIR/wallpaper.conf" 2>/dev/null | tr -d '"' | tail -1 || true)"
     if [ -n "$override" ] && [ -f "$override" ]; then
         set_wallpaper "$override"
     elif [ -n "$(py animated.py apply "$slug")" ]; then
@@ -179,7 +180,7 @@ apply_theme() {      # $1 theme, $2 wallpaper index (optional)
     if [ "$previous" != "$slug" ]; then
         local kconf greet
         kconf="$(themectl path "$slug")/kde.conf"
-        greet="$(sed -n 's/^GREETING_TITLE=//p' "$kconf" 2>/dev/null | tr -d '"')"
+        greet="$(sed -n 's/^GREETING_TITLE=//p' "$kconf" 2>/dev/null | tr -d '"' || true)"
         [ -n "$greet" ] && notify-send -a "$(sed -n 's/^GREETING_FROM=//p' "$kconf" | tr -d '"')" -i user-identity \
             "$greet" "$(sed -n 's/^GREETING_TEXT=//p' "$kconf" | tr -d '"')" 2>/dev/null || true
     fi
@@ -473,7 +474,7 @@ volume() {
 
 llm_setup() {        # Ollama (package ollama-cuda / ollama) + model from assistant.conf
     local model
-    model="$(sed -n 's/^LOCAL_MODEL=//p' "$CONF_DIR/assistant.conf" 2>/dev/null | tr -d '"')"; model="${model:-qwen3:4b}"
+    model="$(sed -n 's/^LOCAL_MODEL=//p' "$CONF_DIR/assistant.conf" 2>/dev/null | tr -d '"' || true)"; model="${model:-qwen3:4b}"
     if ! command -v ollama >/dev/null; then
         local pkg=ollama
         command -v nvidia-smi >/dev/null && pkg=ollama-cuda
