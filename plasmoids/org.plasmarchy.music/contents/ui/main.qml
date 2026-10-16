@@ -175,7 +175,8 @@ PlasmoidItem {
 
     compactRepresentation: MouseArea {
         id: compact
-        readonly property real textWidth: Plasmoid.configuration.showTitle
+        // without a song only the wave stays in the bar (click opens the popup to pick one)
+        readonly property real textWidth: Plasmoid.configuration.showTitle && root.hasPlayer
             ? Math.min(label.implicitWidth, Kirigami.Units.gridUnit * Plasmoid.configuration.maxTitleWidth) : 0
         // a new title glides to its width instead of making the top bar jump
         property real shownWidth: textWidth
@@ -221,18 +222,18 @@ PlasmoidItem {
             }
             PC3.Label {
                 id: label
-                visible: compact.textWidth > 0
+                visible: compact.shownWidth > 0   // stays while it glides out
                 Layout.preferredWidth: compact.shownWidth
                 // same visible gap on both sides: the buttons on the right have their own padding
                 Layout.leftMargin: Kirigami.Units.smallSpacing + (Kirigami.Units.gridUnit * 1.6 - Kirigami.Theme.defaultFont.pixelSize * 1.25) / 2
-                // without music: a quiet placeholder, so the player keeps its place
-                text: root.hasPlayer ? root.line : i18n("Nothing is playing")
+                text: root.hasPlayer ? root.line : ""
                 elide: Text.ElideRight
                 font.family: root.mono
                 font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 opacity: root.playing ? 0.95 : 0.5
             }
             RowLayout {   // previous / play-pause / next
+                visible: root.hasPlayer
                 spacing: 0
                 BarButton { glyph: 0xF04AE; ok: root.hasPlayer && root.player.canGoPrevious; onActivated: root.player.Previous() }
                 BarButton { glyph: root.playing ? 0xF03E4 : 0xF040A; ok: root.hasPlayer; onActivated: root.player.PlayPause() }
