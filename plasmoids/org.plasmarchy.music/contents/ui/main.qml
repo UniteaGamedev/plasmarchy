@@ -387,38 +387,100 @@ PlasmoidItem {
 
             // not set up yet: what to do, the command to copy, a terminal, or set it up automatically
             ColumnLayout {
+                id: setupCard
                 readonly property bool ytMissing: root.youtube && !(root.spotify.youtube && root.spotify.youtube.installed)
                 readonly property bool spMissing: !root.youtube && !root.spotify.installed
                 readonly property string command: root.youtube ? "sudo pacman -S --needed yt-dlp mpv-mpris"
                                                   : "sudo pacman -S --needed spotify-launcher"
+                // what to do in steps, so the text doesn't read as one block
+                readonly property var steps: root.youtube
+                    ? [i18n("Click “%1”. Plasmarchy installs the two small packages it needs.", i18n("Set up automatically"))]
+                    : [i18n("Click “%1”. Plasmarchy installs the app.", i18n("Set up automatically")),
+                       i18n("Sign in once in the Spotify app.")]
                 visible: ytMissing || spMissing
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: Kirigami.Units.largeSpacing
-                Item { Layout.fillHeight: true }
-                Kirigami.Heading {
+                Layout.topMargin: Kirigami.Units.largeSpacing
+                spacing: Kirigami.Units.gridUnit
+                ColumnLayout {   // heading and intro
                     Layout.fillWidth: true
-                    level: 4
-                    horizontalAlignment: Text.AlignHCenter
-                    text: root.youtube ? i18n("YouTube Music isn't set up yet")
-                        : i18n("Spotify isn't set up yet")
+                    spacing: Kirigami.Units.smallSpacing
+                    Kirigami.Heading {
+                        Layout.fillWidth: true
+                        level: 4
+                        wrapMode: Text.WordWrap
+                        text: root.youtube ? i18n("YouTube Music isn't set up yet")
+                            : i18n("Spotify isn't set up yet")
+                    }
+                    PC3.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        lineHeight: 1.25
+                        opacity: 0.7
+                        text: root.youtube ? i18n("Play YouTube Music right here and in the top bar.")
+                            : i18n("Spotify runs in the official Spotify app. You control it right here and in the top bar.")
+                    }
                 }
+                ColumnLayout {   // numbered steps
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+                    Repeater {
+                        model: setupCard.steps
+                        RowLayout {
+                            required property int index
+                            required property string modelData
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.largeSpacing
+                            Rectangle {   // step number in the accent color
+                                Layout.alignment: Qt.AlignTop
+                                implicitWidth: Kirigami.Units.gridUnit * 1.2; implicitHeight: implicitWidth
+                                radius: width / 2
+                                color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.2)
+                                PC3.Label { anchors.centerIn: parent; text: index + 1
+                                            font.bold: true; color: Kirigami.Theme.highlightColor }
+                            }
+                            PC3.Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                lineHeight: 1.25
+                                text: modelData
+                            }
+                        }
+                    }
+                }
+                RowLayout {   // set it up, or open a terminal
+                    spacing: Kirigami.Units.smallSpacing
+                    PC3.Button {
+                        text: i18n("Set up automatically")
+                        icon.name: "run-build"
+                        onClicked: {
+                            root.expanded = false
+                            exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music "
+                                + (root.youtube ? "setup youtube" : "setup") + "'")
+                        }
+                    }
+                    PC3.Button {
+                        text: i18n("Open terminal")
+                        icon.name: "utilities-terminal"
+                        onClicked: { root.expanded = false; exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music open-terminal'") }
+                    }
+                }
+                Kirigami.Separator { Layout.fillWidth: true; opacity: 0.5 }
                 PC3.Label {
                     Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     opacity: 0.7
-                    // explains what the buttons below do; the button names are inserted so they always match
-                    text: root.youtube ? i18n("Play YouTube Music right here in the top bar. Click “%1” and Plasmarchy installs the two small packages it needs. Prefer doing it yourself? Copy the command below and paste it into a terminal.", i18n("Set up automatically"))
-                        : i18n("Spotify runs in the official Spotify app, and you control it right here and in the top bar. Click “%1” and Plasmarchy installs the app, then sign in once in it. Prefer doing it yourself? Copy the command below and paste it into a terminal.", i18n("Set up automatically"))
+                    font: Kirigami.Theme.smallFont
+                    text: i18n("Prefer doing it yourself? Run this command in a terminal:")
                 }
                 RowLayout {   // the command, ready to copy
                     Layout.fillWidth: true
+                    Layout.topMargin: -Kirigami.Units.largeSpacing   // belongs to the line above
                     PC3.TextField {
                         id: commandField
                         Layout.fillWidth: true
                         readOnly: true
-                        text: parent.parent.command
+                        text: setupCard.command
                         font.family: root.mono
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                     }
@@ -431,27 +493,12 @@ PlasmoidItem {
                 PC3.Label {
                     id: copied
                     visible: false
-                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: true
+                    Layout.topMargin: -Kirigami.Units.largeSpacing
+                    wrapMode: Text.WordWrap
                     text: i18n("Copied. Paste it into the terminal with Ctrl+Shift+V.")
                     font: Kirigami.Theme.smallFont
                     color: Kirigami.Theme.positiveTextColor
-                }
-                RowLayout {
-                    Layout.alignment: Qt.AlignHCenter
-                    PC3.Button {
-                        text: i18n("Open terminal")
-                        icon.name: "utilities-terminal"
-                        onClicked: { root.expanded = false; exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music open-terminal'") }
-                    }
-                    PC3.Button {
-                        text: i18n("Set up automatically")
-                        icon.name: "run-build"
-                        onClicked: {
-                            root.expanded = false
-                            exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music "
-                                + (root.youtube ? "setup youtube" : "setup") + "'")
-                        }
-                    }
                 }
                 Item { Layout.fillHeight: true }
             }
