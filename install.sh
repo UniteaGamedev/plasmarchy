@@ -41,7 +41,7 @@ command -v plasmashell >/dev/null && [ "$(plasmashell --version 2>/dev/null | gr
 if [ "$PACKAGES" = 1 ]; then
     step "$(t "Installing packages")"
     pkgs=(python qt6-declarative qt6-imageformats kimageformats imagemagick papirus-icon-theme
-          ttf-jetbrains-mono-nerd swayidle alacritty kdialog spotify-player)
+          ttf-jetbrains-mono-nerd swayidle alacritty kdialog)
     # Rounded window corners are packaged on CachyOS only (on Arch: AUR kwin-effect-rounded-corners-git)
     pacman -Si kwin-effect-rounded-corners >/dev/null 2>&1 && pkgs+=(kwin-effect-rounded-corners) \
         || warn "$(t "kwin-effect-rounded-corners is not in the repositories, window corners stay square.")"

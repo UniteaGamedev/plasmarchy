@@ -1,17 +1,15 @@
 #!/usr/bin/python3 -I
-"""Built-in music for the top bar - no browser or desktop app needed.
+"""Music for the top bar.
 
-Spotify (Premium): spotify_player (librespot) runs as a background daemon and appears as the Spotify Connect
-device "Plasmarchy". YouTube Music: yt-dlp finds songs, mpv plays them (audio only); a picked song starts as a
-radio (YouTube mix) so next/previous work. The widget shows/controls both through MPRIS (mpv needs mpv-mpris).
+Spotify: the official Spotify app (spotify-launcher). The widget controls it through MPRIS and sends searches
+to it; signing in happens once in the app itself. YouTube Music: built in, no app needed. Its search API finds
+songs, mpv plays them (audio only) and a picked song starts a radio that never runs out (radio.lua). The widget
+shows and controls both through MPRIS (mpv needs mpv-mpris).
 
-  music.py status                   JSON: what is installed / signed in / running, per source
-  music.py login                    sign in to Spotify once (opens the browser)
-  music.py client-id <id>           use your own Spotify app (own request limit), then sign in again
-  music.py start                    start the Spotify background player (if not running)
-  music.py playlists                JSON: liked songs + your Spotify playlists
-  music.py search <query>           JSON: Spotify tracks, playlists, albums, artists
-  music.py play <kind> <id>         Spotify: track | playlist | album | artist | liked
+  music.py status                   JSON: what is installed / running, per source
+  music.py sp-open                  start the Spotify app (or bring it up)
+  music.py sp-search <query>        show the search results in the Spotify app
+  music.py sp-search64 <base64>     the same, query base64 encoded (from the widget)
   music.py yt-search <query>        JSON: songs on YouTube Music
   music.py yt-play <id|url>         play a song (as a radio) or a YouTube/YouTube Music link
   music.py yt-now                   JSON: cover of the song our mpv plays
@@ -34,65 +32,57 @@ RUN = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
 MPV_SOCKET = os.path.join(RUN, "plasmarchy-mpv.sock")
 MPRIS_PLUGINS = ["/etc/mpv/scripts/mpris.so", "/usr/share/mpv/scripts/mpris.so", "/usr/lib/mpv-mpris/mpris.so",
                  os.path.join(HOME, ".config/mpv/scripts/mpris.so")]
-CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.join(HOME, ".cache")), "spotify-player")
-DEVICE = "Plasmarchy"
+SPOTIFY_BUS = "org.mpris.MediaPlayer2.spotify"
 
 
-def binary():
-    return shutil.which("spotify_player")
+def spotify_binary():
+    for name in ("spotify-launcher", "spotify"):
+        path = shutil.which(name)
+        if path:
+            return [path]
+    if shutil.which("flatpak") and subprocess.run(["flatpak", "info", "com.spotify.Client"],
+                                                  capture_output=True).returncode == 0:
+        return ["flatpak", "run", "com.spotify.Client"]
+    return None
 
 
-CONFIG = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "spotify-player", "app.toml")
-
-
-def authenticated():
-    """Every part of the sign in: librespot's credentials (playback), the Web API token of the configured app
-    (search, library) and, if it is a different one, the shared app's token (spotify_player reads playlists
-    through it)."""
-    if not os.path.isfile(os.path.join(CACHE, "credentials.json")):
-        return False
-    ids = {client_id() or "d420a117a32841c2b3474932e49fb54b", "d420a117a32841c2b3474932e49fb54b"}
-    return all(os.path.isfile(os.path.join(CACHE, f"{i}_token.json")) for i in ids)
-
-
-SHARED_CLIENT_IDS = {"", "d420a117a32841c2b3474932e49fb54b", "65b708073fc0480ea92a077233ca87bd"}
-
-
-def client_id():
-    try:
-        m = re.search(r'(?m)^client_id\s*=\s*"([^"]*)"', open(CONFIG).read())
-    except OSError:
-        return ""
-    return m.group(1) if m else ""
-
-
-def own_app():
-    """True once the user's own Spotify app is configured (the shared one is rate limited almost always)."""
-    return client_id() not in SHARED_CLIENT_IDS
-
-
-def rate_limited():
-    """True if Spotify answered "429 Too Many Requests" in the player's latest log during the last minute."""
-    logs = sorted(glob.glob(os.path.join(CACHE, "spotify-player-*.log")), key=os.path.getmtime)
-    if not logs or time.time() - os.path.getmtime(logs[-1]) > 60:
-        return False
-    with open(logs[-1], errors="replace") as f:
-        f.seek(max(0, os.path.getsize(logs[-1]) - 20000))
-        return "rate limit" in f.read()
-
-
-def running():
-    return subprocess.run(["pgrep", "-x", "spotify_player"], capture_output=True).returncode == 0
+def spotify_running():
+    return subprocess.run(["busctl", "--user", "status", SPOTIFY_BUS], capture_output=True).returncode == 0
 
 
 def status():
     yt = yt_status()
     yt["running"] = subprocess.run(["pgrep", "-f", MPV_SOCKET], capture_output=True).returncode == 0   # our mpv
-    return {"installed": bool(binary()), "authenticated": authenticated(), "running": running(), "ownApp": own_app(),
-            "youtube": yt}
+    return {"installed": bool(spotify_binary()), "running": spotify_running(), "youtube": yt}
 
 
-# --- YouTube Music (yt-dlp + mpv) -------------------------------------------------------------------
+def sp_open():
+    """Start the Spotify app if it isn't running and wait until it can be controlled."""
+    cmd = spotify_binary()
+    if not cmd:
+        raise SystemExit(tr("Spotify isn't set up yet"))
+    if not spotify_running():
+        spawn(cmd, "spotify")
+        for _ in range(60):
+            time.sleep(0.5)
+            if spotify_running():
+                time.sleep(1)   # the app needs a moment before it accepts commands
+                break
+    return {"ok": True}
+
+
+def sp_search(query):
+    """Show the search results in the Spotify app (Spotify offers no search without a developer app)."""
+    import urllib.parse
+    sp_open()
+    uri = "spotify:search:" + urllib.parse.quote(query)
+    subprocess.run(["busctl", "--user", "call", SPOTIFY_BUS, "/org/mpris/MediaPlayer2",
+                    "org.mpris.MediaPlayer2.Player", "OpenUri", "s", uri], capture_output=True)
+    subprocess.run(["busctl", "--user", "call", SPOTIFY_BUS, "/org/mpris/MediaPlayer2",
+                    "org.mpris.MediaPlayer2", "Raise"], capture_output=True)
+    return {"ok": True}
+
+
 def mpris_plugin():
     return next((p for p in MPRIS_PLUGINS if os.path.isfile(p)), "")
 
@@ -303,169 +293,16 @@ def yt_play(target):
     return {"ok": True}
 
 
-def start():
-    if not binary():
-        raise SystemExit(tr("spotify-player is not installed (sudo pacman -S spotify-player)"))
-    if not running():
-        spawn([binary(), "--daemon", "-o", f'device.name="{DEVICE}"', "-o", "device.volume=80"], "spotify", forking=True)
-        for _ in range(30):   # until the daemon answers
-            time.sleep(0.3)
-            if sp(["get", "key", "devices"], timeout=5, check=False) is not None:
-                break
-    return {"ok": True}
-
-
-def sp(args, timeout=20, check=True):
-    """Run a spotify_player CLI command and return its JSON output (None on failure)."""
-    out = subprocess.run([binary(), *args], capture_output=True, text=True, timeout=timeout)
-    if out.returncode != 0:
-        if check:
-            raise SystemExit((out.stderr or out.stdout).strip()[-300:] or tr("Spotify command failed"))
-        return None
-    try:
-        return json.loads(out.stdout) if out.stdout.strip() else {}
-    except ValueError:
-        return {}
-
-
-def ident(x):
-    """IDs come as plain strings, "spotify:type:id" URIs or {"id": ...} objects."""
-    if isinstance(x, dict):
-        x = x.get("id") or x.get("uri") or ""
-    return str(x).rsplit(":", 1)[-1]
-
-
-def names(lst):
-    return ", ".join(a.get("name", "") for a in (lst or []) if isinstance(a, dict))
-
-
-def image(item):
-    imgs = item.get("images") or (item.get("album") or {}).get("images") or []
-    if imgs and isinstance(imgs, list):
-        best = sorted(imgs, key=lambda i: abs((i.get("width") or 300) - 300))[0]
-        return best.get("url", "")
-    return ""
-
-
-def norm(item, kind):
-    sub = {"track": lambda i: names(i.get("artists")),
-           "album": lambda i: names(i.get("artists")),
-           "artist": lambda i: tr("Artist"),
-           "playlist": lambda i: (i.get("owner") or {}).get("display_name") or (i.get("owner") or {}).get("name", "")
-           if isinstance(i.get("owner"), dict) else ""}[kind](item)
-    return {"kind": kind, "id": ident(item.get("id") or item), "name": item.get("name", ""), "sub": sub or "",
-            "image": image(item)}
-
-
-def playlists():
-    start()
-    data = sp(["get", "key", "user-playlists"]) or []
-    items = data if isinstance(data, list) else data.get("items", [])
-    return [{"kind": "liked", "id": "", "name": tr("Liked songs"), "sub": "Spotify", "image": ""}] + \
-           [norm(p, "playlist") for p in items if isinstance(p, dict)]
-
-
-def search(query):
-    start()
-    data = sp(["search", query]) or {}
-    out = {}
-    for kind, key in (("track", "tracks"), ("artist", "artists"), ("album", "albums"), ("playlist", "playlists")):
-        items = data.get(key, [])
-        if isinstance(items, dict):
-            items = items.get("items", [])
-        out[key] = [norm(i, kind) for i in items[:8] if isinstance(i, dict)]
-    return out
-
-
-def latest_log():
-    logs = sorted(glob.glob(os.path.join(CACHE, "spotify-player-*.log")), key=os.path.getmtime)
-    return logs[-1] if logs else ""
-
-
-def rate_limit_msg():
-    return tr("Spotify is limiting requests from the shared app right now. With your own free Spotify app this goes away: plasmarchy music client-id")
-
-
-def play(kind, item_id):
-    start()
-    # spotify_player answers "ok" even when Spotify refuses to start playback: watch its log for that
-    log = latest_log()
-    offset = os.path.getsize(log) if log else 0
-    if kind == "liked":
-        sp(["playback", "start", "liked"])
-    elif kind == "track":
-        sp(["playback", "start", "track", "--id", item_id])
-    elif kind in ("playlist", "album", "artist"):
-        sp(["playback", "start", "context", "--id", item_id, kind])
-    else:
-        raise SystemExit(tr("Unknown item: {0}", kind))
-    time.sleep(1.5)
-    if log and os.path.isfile(log):
-        with open(log, errors="replace") as f:
-            f.seek(offset)
-            new = f.read()
-        if "429 Too Many Requests" in new or "rate limit" in new:
-            raise SystemExit(rate_limit_msg())
-        if "Failed to handle a player request" in new:
-            raise SystemExit(tr("Spotify command failed"))
-    return {"ok": True}
-
-
-def spawn(args, name, forking=False):
+def spawn(args, name):
     """Start a player in its own systemd unit: started from the widget it would otherwise belong to plasmashell's
     service, and every Plasma restart would stop the music."""
     if shutil.which("systemd-run"):
         unit = f"plasmarchy-{name}-{int(time.time())}"
-        extra = ["--property=Type=forking"] if forking else []   # spotify_player --daemon forks itself
-        if subprocess.run(["systemd-run", "--user", "--quiet", "--collect", f"--unit={unit}", *extra, *args],
+        if subprocess.run(["systemd-run", "--user", "--quiet", "--collect", f"--unit={unit}", *args],
                           capture_output=True).returncode == 0:
             return
     subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
                      start_new_session=True)
-
-
-def stop():
-    subprocess.run(["pkill", "-x", "spotify_player"], capture_output=True)
-    for _ in range(20):
-        if not running():
-            break
-        time.sleep(0.2)
-
-
-def login():
-    """Sign in (runs in a terminal). spotify_player's "authenticate" saves only the Web API token; the playback
-    credentials are saved when the player itself connects, so start it afterwards and wait for them."""
-    if not binary():
-        raise SystemExit(tr("spotify-player is not installed (sudo pacman -S spotify-player)"))
-    stop()
-    # The playback sign in (shown by Spotify as "ncspot", it must use a client id Spotify allows for playback)
-    # is needed only once. If it is saved already, just restart the player: it asks in the browser only for the
-    # missing Web API token (shown as your own app's name).
-    if not os.path.isfile(os.path.join(CACHE, "credentials.json")):
-        if subprocess.run([binary(), "authenticate"]).returncode != 0:
-            raise SystemExit(tr("Spotify command failed"))
-    spawn([binary(), "--daemon", "-o", f'device.name="{DEVICE}"', "-o", "device.volume=80"], "spotify", forking=True)
-    for _ in range(120):
-        if authenticated():
-            print(tr("Spotify is connected. You can close this window."))
-            return
-        time.sleep(1)
-    raise SystemExit(tr("Spotify did not answer in time"))
-
-
-def set_client_id(client_id):
-    """Use your own Spotify app instead of the shared one (its own request limit, and its name on the consent page)."""
-    client_id = client_id.strip()
-    if not re.fullmatch(r"[0-9a-f]{32}", client_id):
-        raise SystemExit(tr("That doesn't look like a Client ID (32 characters, 0-9 and a-f)."))
-    text = open(CONFIG).read() if os.path.isfile(CONFIG) else ""
-    line = f'client_id = "{client_id}"'
-    text = re.sub(r'(?m)^client_id\s*=.*$', line, text) if re.search(r"(?m)^client_id\s*=", text) else line + "\n" + text
-    os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
-    open(CONFIG, "w").write(text)
-    # no tokens are deleted: they are stored per client id, and spotify_player keeps using the shared (ncspot)
-    # app's token for reading playlists (ncspot_only_get_endpoints), so that one must stay
-    login()
 
 
 def main():
@@ -474,21 +311,13 @@ def main():
     try:
         if cmd == "status":
             result = status()
-        elif cmd == "start":
-            result = start()
-        elif cmd == "login":
-            login()
-            return
-        elif cmd == "client-id" and len(a) == 2:
-            set_client_id(a[1])
-            return
-        elif cmd == "playlists":
-            result = {"items": playlists()}
-        elif cmd == "search" and len(a) >= 2:
-            result = search(" ".join(a[1:]))
-        elif cmd == "search64" and len(a) == 2:   # from the widget
+        elif cmd == "sp-open":
+            result = sp_open()
+        elif cmd == "sp-search" and len(a) >= 2:
+            result = sp_search(" ".join(a[1:]))
+        elif cmd == "sp-search64" and len(a) == 2:   # from the widget
             import base64
-            result = search(base64.b64decode(a[1]).decode("utf-8"))
+            result = sp_search(base64.b64decode(a[1]).decode("utf-8"))
         elif cmd == "yt-search" and len(a) >= 2:
             result = yt_search(" ".join(a[1:]))
         elif cmd == "yt-search64" and len(a) == 2:   # from the widget
@@ -500,13 +329,10 @@ def main():
             result = yt_now()
         elif cmd == "yt-play" and len(a) == 2:
             result = yt_play(a[1])
-        elif cmd == "play" and len(a) >= 2:
-            result = play(a[1], a[2] if len(a) > 2 and a[2] != "-" else "")
         else:
             raise SystemExit(__doc__)
     except subprocess.TimeoutExpired:
-        result = {"error": rate_limit_msg() if rate_limited()
-                  else tr("Spotify did not answer in time")}
+        result = {"error": tr("YouTube Music did not answer in time")}
     except SystemExit as e:
         if cmd in ("status",) or str(e) == __doc__:
             raise

@@ -532,9 +532,8 @@ case "${1:-pick}" in
     talk)           py talk.py ;;
     music)          case "${2:-}" in
                         setup)          if [ "${3:-}" = youtube ]; then terminal "sudo pacman -S --needed yt-dlp mpv-mpris"
-                                        else terminal "sudo pacman -S --needed spotify-player && $0 music login"; fi ;;
+                                        else terminal "sudo pacman -S --needed spotify-launcher && $0 music sp-open"; fi ;;
                         open-terminal)  (alacritty 2>/dev/null || konsole) >/dev/null 2>&1 & ;;
-                        login-terminal) terminal "$0 music login" ;;
                         *)              py music.py "${@:2}" ;;
                     esac ;;
     settings)       py settings.py "${@:2}" ;;

@@ -1,5 +1,5 @@
 // Music player for the top bar.
-// Built in: Spotify (Premium) through spotify_player - search, liked songs and playlists, no browser needed.
+// Sources: YouTube Music (built in: search, radio) and Spotify (the official app: searches open in it).
 // It also shows and controls any other MPRIS player (YouTube Music or SoundCloud in a browser, VLC, ...).
 // Top bar: audio wave, title, previous / play-pause / next. Click: popup. Scroll: previous/next track.
 import QtQuick
@@ -71,16 +71,13 @@ PlasmoidItem {
     readonly property string artist: !player || loading ? "" : (player.artist || "")
     readonly property string line: artist && title ? artist + " · " + title : title
 
-    // Spotify (spotify_player)
-    property var spotify: ({ installed: false, authenticated: false, running: false })
-    property var library: []            // liked songs + playlists
-    property var results: null          // search results
+    property var spotify: ({ installed: false, running: false })   // status of both sources (see music.py)
     property string busy: ""
     property var errors: ({ spotify: "", youtube: "" })   // per source, so Spotify's errors don't show on YouTube
     readonly property string error: errors[youtube ? "youtube" : "spotify"] || ""
     function setError(src, text) { var e = Object.assign({}, errors); e[src] = text; errors = e }
 
-    // player names as people know them: our mpv plays YouTube Music, spotify_player is Spotify
+    // player names as people know them: our mpv plays YouTube Music
     function niceName(identity) {
         if (identity === "mpv" && spotify.youtube && spotify.youtube.running) return "YouTube Music"
         if (/spotify/i.test(identity)) return "Spotify"
@@ -92,18 +89,15 @@ PlasmoidItem {
     }
     function run(args) { exec.connectSource("sh -c 'exec " + bin + " music " + args + "'") }
     readonly property bool youtube: Plasmoid.configuration.source === "youtube"
-    // Spotify works reliably only with the user's own (free) Spotify app: the shared one is always rate limited
-    readonly property bool spReady: !!spotify.installed && !!spotify.ownApp && !!spotify.authenticated
-    readonly property string redirectUri: "http://127.0.0.1:8989/login"
     property var ytResults: []
     function play(item) {
-        busy = item.name; setError(item.kind === "yt" ? "youtube" : "spotify", "")
-        if (item.kind === "yt") run("yt-play " + item.id)
-        else run("play " + item.kind + " " + (item.id || "-"))
+        busy = item.name; setError("youtube", "")
+        run("yt-play " + item.id)
     }
     function search(text) {
         busy = "search"; setError(youtube ? "youtube" : "spotify", "")
-        run((youtube ? "yt-search64 " : "search64 ") + Qt.btoa(text))
+        // Spotify shows its results in the app itself (searching inside the popup would need a developer app)
+        run((youtube ? "yt-search64 " : "sp-search64 ") + Qt.btoa(text))
     }
 
     // source switch (Spotify / YouTube Music) next to the search field
@@ -130,21 +124,13 @@ PlasmoidItem {
             if (out && out.error && source.indexOf(" music status") < 0)
                 root.setError(source.indexOf(" music yt-") >= 0 ? "youtube" : "spotify", out.error)
             if (source.indexOf(" music status") >= 0) { if (out) root.spotify = out }
-            else if (source.indexOf(" music playlists") >= 0) { if (out && out.items) root.library = out.items; root.busy = "" }
-            else if (source.indexOf(" music search64 ") >= 0) { if (out && !out.error) root.results = out; root.busy = "" }
+            else if (source.indexOf(" music sp-") >= 0) { root.busy = ""; root.run("status") }
             else if (source.indexOf(" music yt-search64 ") >= 0) { if (out && out.items) root.ytResults = out.items; root.busy = "" }
-            else if (source.indexOf(" music client-id ") >= 0) { root.busy = ""; root.library = []; root.run("status") }
             else if (source.indexOf(" music yt-now") >= 0) { if (out) root.ytCover = out.image || "" }
             else if (source.indexOf(" music play ") >= 0 || source.indexOf(" music yt-play ") >= 0) { root.busy = ""; root.run("status") }
         }
     }
-    // the Spotify library is loaded only when Spotify is the chosen source
-    function loadLibrary() {
-        if (root.expanded && !youtube && spotify.authenticated && library.length === 0 && busy === "") { busy = "library"; run("playlists") }
-    }
-    onExpandedChanged: if (root.expanded) { if (player) player.updatePosition(); run("status"); loadLibrary() }
-    onSpotifyChanged: loadLibrary()
-    onYoutubeChanged: loadLibrary()
+    onExpandedChanged: if (root.expanded) { if (player) player.updatePosition(); run("status") }
     Component.onCompleted: run("status")
 
     Timer {   // MPRIS only reports the position on request
@@ -391,10 +377,10 @@ PlasmoidItem {
                 PlasmaExtras.SearchField {
                     id: searchField
                     Layout.fillWidth: true
-                    visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed) : root.spReady
+                    visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed) : !!root.spotify.installed
                     placeholderText: root.youtube ? i18n("Search YouTube Music …") : i18n("Search Spotify …")
                     onAccepted: if (text.trim()) root.search(text.trim())
-                    onTextChanged: if (text === "") { root.results = null; root.ytResults = [] }
+                    onTextChanged: if (text === "") root.ytResults = []
                 }
                 Item { Layout.fillWidth: true; visible: !searchField.visible }
             }
@@ -402,10 +388,9 @@ PlasmoidItem {
             // not set up yet: what to do, the command to copy, a terminal, or set it up automatically
             ColumnLayout {
                 readonly property bool ytMissing: root.youtube && !(root.spotify.youtube && root.spotify.youtube.installed)
-                readonly property bool spMissing: !root.youtube && (!root.spotify.installed || (root.spotify.ownApp && !root.spotify.authenticated))
+                readonly property bool spMissing: !root.youtube && !root.spotify.installed
                 readonly property string command: root.youtube ? "sudo pacman -S --needed yt-dlp mpv-mpris"
-                                                  : !root.spotify.installed ? "sudo pacman -S --needed spotify-player"
-                                                  : "plasmarchy music login"
+                                                  : "sudo pacman -S --needed spotify-launcher"
                 visible: ytMissing || spMissing
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -416,7 +401,7 @@ PlasmoidItem {
                     level: 4
                     horizontalAlignment: Text.AlignHCenter
                     text: root.youtube ? i18n("YouTube Music isn't set up yet")
-                        : !root.spotify.installed ? i18n("Spotify isn't set up yet") : i18n("Connect your Spotify account")
+                        : i18n("Spotify isn't set up yet")
                 }
                 PC3.Label {
                     Layout.fillWidth: true
@@ -425,8 +410,7 @@ PlasmoidItem {
                     opacity: 0.7
                     // explains what the buttons below do; the button names are inserted so they always match
                     text: root.youtube ? i18n("Play YouTube Music right here in the top bar. Click “%1” and Plasmarchy installs the two small packages it needs. Prefer doing it yourself? Copy the command below and paste it into a terminal.", i18n("Set up automatically"))
-                        : !root.spotify.installed ? i18n("Play Spotify right here in the top bar (Spotify Premium needed). Click “%1” and Plasmarchy installs the player for you. Prefer doing it yourself? Copy the command below and paste it into a terminal.", i18n("Set up automatically"))
-                        : i18n("One step left: sign in to Spotify. Click “%1” and confirm the sign in in your browser. Or copy the command below and run it in a terminal yourself.", i18n("Connect Spotify"))
+                        : i18n("Spotify runs in the official Spotify app, and you control it right here and in the top bar. Click “%1” and Plasmarchy installs the app, then sign in once in it. Prefer doing it yourself? Copy the command below and paste it into a terminal.", i18n("Set up automatically"))
                 }
                 RowLayout {   // the command, ready to copy
                     Layout.fillWidth: true
@@ -460,119 +444,36 @@ PlasmoidItem {
                         onClicked: { root.expanded = false; exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music open-terminal'") }
                     }
                     PC3.Button {
-                        text: root.youtube || !root.spotify.installed ? i18n("Set up automatically") : i18n("Connect Spotify")
+                        text: i18n("Set up automatically")
                         icon.name: "run-build"
                         onClicked: {
                             root.expanded = false
                             exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music "
-                                + (root.youtube ? "setup youtube" : root.spotify.installed ? "login-terminal" : "setup") + "'")
+                                + (root.youtube ? "setup youtube" : "setup") + "'")
                         }
                     }
                 }
                 Item { Layout.fillHeight: true }
             }
 
-            // Spotify: set up your own Spotify app, step by step (Spotify offers no way to create it for you)
+            // Spotify: searches open in the app; playback is controlled here and in the top bar
             ColumnLayout {
-                visible: !root.youtube && root.spotify.installed && !root.spotify.ownApp
+                visible: !root.youtube && !!root.spotify.installed
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Heading {
-                    Layout.fillWidth: true
-                    level: 4
-                    text: i18n("Connect your own Spotify app")
-                }
                 PC3.Label {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
-                    opacity: 0.7
-                    text: i18n("Spotify needs your own free app. Setting it up takes about two minutes.")
-                }
-                // 1. portal
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.largeSpacing
-                    PC3.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap
-                                text: i18n("1. Open the Spotify developer portal and sign in with your Spotify account.") }
-                    PC3.Button {
-                        text: i18n("Open portal")
-                        icon.name: "internet-web-browser"
-                        onClicked: Qt.openUrlExternally("https://developer.spotify.com/dashboard/create")
-                    }
-                }
-                // 2. what to enter
-                PC3.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    text: i18n("2. Create an app with these values, tick “Web API” and save:")
-                }
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: 3
-                    columnSpacing: Kirigami.Units.smallSpacing
-                    rowSpacing: Kirigami.Units.smallSpacing
-                    PC3.Label { text: i18n("App name"); opacity: 0.7; font: Kirigami.Theme.smallFont }
-                    PC3.TextField { id: nameField; Layout.fillWidth: true; readOnly: true; text: "Plasmarchy"; font.family: root.mono }
-                    PC3.ToolButton { icon.name: "edit-copy"; onClicked: { nameField.selectAll(); nameField.copy(); nameField.deselect(); copiedHint.show() }
-                                     PC3.ToolTip { text: i18n("Copy") } }
-                    PC3.Label { text: i18n("App description"); opacity: 0.7; font: Kirigami.Theme.smallFont }
-                    PC3.TextField { id: descField; Layout.fillWidth: true; readOnly: true; text: "Music in the Plasmarchy top bar"; font.family: root.mono }
-                    PC3.ToolButton { icon.name: "edit-copy"; onClicked: { descField.selectAll(); descField.copy(); descField.deselect(); copiedHint.show() }
-                                     PC3.ToolTip { text: i18n("Copy") } }
-                    PC3.Label { text: "Redirect URI"; opacity: 0.7; font: Kirigami.Theme.smallFont }
-                    PC3.TextField { id: uriField; Layout.fillWidth: true; readOnly: true; text: root.redirectUri; font.family: root.mono }
-                    PC3.ToolButton { icon.name: "edit-copy"; onClicked: { uriField.selectAll(); uriField.copy(); uriField.deselect(); copiedHint.show() }
-                                     PC3.ToolTip { text: i18n("Copy") } }
-                }
-                PC3.Label {
-                    id: copiedHint
-                    function show() { visible = true; hideHint.restart() }
-                    visible: false
-                    text: i18n("Copied")
+                    opacity: 0.6
                     font: Kirigami.Theme.smallFont
-                    color: Kirigami.Theme.positiveTextColor
-                    Timer { id: hideHint; interval: 2000; onTriggered: copiedHint.visible = false }
+                    text: i18n("Search results open in the Spotify app. Play, pause and skip right here and in the top bar.")
                 }
-                // 3. client id
-                PC3.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    text: i18n("3. Open the new app, copy its Client ID and paste it here:")
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    PC3.TextField {
-                        id: clientIdField
-                        Layout.fillWidth: true
-                        placeholderText: "Client ID"
-                        font.family: root.mono
-                        readonly property string clean: text.trim().toLowerCase()
-                        readonly property bool valid: /^[0-9a-f]{32}$/.test(clean)
-                        onAccepted: if (valid) connectButton.clicked()
-                    }
-                    PC3.Button {
-                        id: connectButton
-                        text: i18n("Connect")
-                        icon.name: "network-connect"
-                        enabled: clientIdField.valid && root.busy !== "client-id"
-                        onClicked: { root.busy = "client-id"; root.setError("spotify", ""); root.run("client-id " + clientIdField.clean) }
-                    }
-                }
-                PC3.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    visible: clientIdField.text.trim() !== "" && !clientIdField.valid
-                    text: i18n("That doesn't look like a Client ID (32 characters, 0-9 and a-f).")
-                    font: Kirigami.Theme.smallFont
-                    color: Kirigami.Theme.negativeTextColor
-                }
-                RowLayout {
-                    visible: root.busy === "client-id"
-                    spacing: Kirigami.Units.smallSpacing
-                    PC3.BusyIndicator { running: parent.visible; implicitWidth: Kirigami.Units.iconSizes.small; implicitHeight: implicitWidth }
-                    PC3.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap
-                                text: i18n("Confirm in your browser. Spotify may ask more than once, also for “ncspot”: that is the player itself …") }
+                PC3.Button {
+                    visible: !root.spotify.running
+                    text: i18n("Open Spotify")
+                    icon.name: "spotify"
+                    onClicked: { root.busy = "spotify"; root.run("sp-open") }
                 }
                 PC3.Label {
                     visible: root.error !== ""
@@ -584,9 +485,9 @@ PlasmoidItem {
                 Item { Layout.fillHeight: true }
             }
 
-            // search and library
+            // YouTube Music: search results
             ColumnLayout {
-                visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed) : root.spReady
+                visible: root.youtube && !!root.spotify.youtube && root.spotify.youtube.installed
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: Kirigami.Units.largeSpacing
@@ -611,19 +512,7 @@ PlasmoidItem {
                     ListView {
                         id: list
                         clip: true
-                        // YouTube results, Spotify library, or Spotify search results grouped by type
-                        model: root.youtube ? root.ytResults
-                             : root.results === null ? root.library
-                             : [].concat(root.results.tracks || [], root.results.playlists || [],
-                                         root.results.albums || [], root.results.artists || [])
-                        section.property: !root.youtube && root.results !== null ? "kind" : ""
-                        section.delegate: PC3.Label {
-                            required property string section
-                            text: section === "track" ? i18n("Songs") : section === "playlist" ? i18n("Playlists")
-                                : section === "album" ? i18n("Albums") : i18n("Artists")
-                            font.bold: true; opacity: 0.6
-                            topPadding: Kirigami.Units.smallSpacing
-                        }
+                        model: root.ytResults
                         delegate: PC3.ItemDelegate {
                             required property var modelData
                             width: ListView.view.width
@@ -634,13 +523,13 @@ PlasmoidItem {
                                 Rectangle {
                                     Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
                                     Layout.preferredHeight: Layout.preferredWidth
-                                    radius: modelData.kind === "artist" ? width / 2 : 3
+                                    radius: 3
                                     color: Qt.alpha(Kirigami.Theme.highlightColor, 0.15)
                                     clip: true
                                     Image { anchors.fill: parent; source: modelData.image || ""; fillMode: Image.PreserveAspectCrop
                                             asynchronous: true; visible: status === Image.Ready }
                                     PC3.Label { anchors.centerIn: parent; visible: !modelData.image
-                                                text: String.fromCodePoint(modelData.kind === "liked" ? 0xF02D1 : 0xF0CB8)
+                                                text: String.fromCodePoint(0xF0CB8)
                                                 font.family: root.mono; color: Kirigami.Theme.highlightColor }
                                 }
                                 ColumnLayout {
@@ -659,7 +548,7 @@ PlasmoidItem {
                         }
                         PC3.BusyIndicator {
                             anchors.centerIn: parent
-                            visible: (root.busy === "library" || root.busy === "search") && list.count === 0
+                            visible: root.busy === "search" && list.count === 0
                             running: visible
                         }
                     }
