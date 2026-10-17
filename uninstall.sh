@@ -43,6 +43,11 @@ fi
 step "$(t "Resetting the look (colors, icons, wallpaper, terminal)")"
 [ -x "$BIN" ] && "$BIN" restore || true
 
+if [ -x /usr/local/lib/plasmarchy/login-screen ]; then
+    step "$(t "Resetting the login screen (asks for the sudo password)")"
+    sudo bash "$SRC/system/setup.sh" remove
+fi
+
 step "$(t "Removing files")"
 kpackagetool6 -t Plasma/Applet -r org.plasmarchy.aiusage >/dev/null 2>&1
 kpackagetool6 -t Plasma/Applet -r org.plasmarchy.music >/dev/null 2>&1

@@ -14,10 +14,11 @@ cd plasmarchy
 ./install.sh
 ```
 
-Der Installer fragt einmal nach dem sudo-Passwort (für Pakete), sichert alle betroffenen KDE-Einstellungen
+Der Installer fragt nach dem sudo-Passwort (für Pakete und den Anmeldebildschirm), sichert alle betroffenen KDE-Einstellungen
 und richtet dann alles ein. **Rückgängig:** `./uninstall.sh` stellt den vorherigen Zustand wieder her.
 
-Optionen: `--no-layout` (Leisten/Dock nicht anfassen), `--no-packages` (keine Pakete, z. B. für Updates).
+Optionen: `--no-layout` (Leisten/Dock nicht anfassen), `--no-packages` (keine Pakete, z. B. für Updates),
+`--no-login-screen` (Anmeldebildschirm nicht anfassen).
 **Update:** `git pull && ./install.sh --no-packages`
 
 ## Was du bekommst
@@ -27,7 +28,7 @@ Optionen: `--no-layout` (Leisten/Dock nicht anfassen), `--no-packages` (keine Pa
 | **Themes** | 8 Kern-Themes: Osaka Jade, Tokyo Night, Catppuccin Latte, Everforest, Nord, Rosé Pine, Matte Black (aus Omarchy) und Cachy Matrix (animierter Code-Regen, mit Gruß von Morpheus). Dazu ein **Theme-Katalog** (Theme Studio → Weitere Themes) mit weiteren Themes zum Installieren, z. B. Catppuccin, Gruvbox, Kanagawa, Ristretto, Neon Drift, Ember. Jedes Theme lässt sich entfernen und kommt über den Katalog zurück |
 | **Menü** | Die Windows-Taste öffnet ein Menü im Omarchy-Stil: Apps, Lernen, Umschalten, Stil, Aufnehmen, Einrichten, KI-Assistent, Software, Über, System. Lostippen durchsucht alle Einträge und Apps (KRunner als Rückfall), Pfeiltasten navigieren |
 | **Animierte Hintergründe** | Aurora, Partikel, Code-Regen wie in Matrix oder eine Logo-Animation in den Theme-Farben. Dein Logo leuchtet, baut sich auf wie im Screensaver oder bleibt ausgeblendet. Pausieren automatisch, solange ein maximiertes oder Vollbild-Fenster den Desktop verdeckt. Jedes Theme lässt sich animieren |
-| **Theme-Wechsel** | Karussell mit schrägen Vorschauen (←/→, Enter). Wechselt Farben aller Programme, Leiste, Fensterrahmen, Symbole (Papirus mit passender Ordnerfarbe), Hintergrund, Sperrbildschirm und Terminal in ~0,3 s |
+| **Theme-Wechsel** | Karussell mit schrägen Vorschauen (←/→, Enter). Wechselt Farben aller Programme, Leiste, Fensterrahmen, Symbole (Papirus mit passender Ordnerfarbe), Hintergrund, Sperr- und Anmeldebildschirm und Terminal in ~0,3 s |
 | **Theme Studio** | Eigene Themes anlegen, bearbeiten, löschen: alle 25 Farben mit Farbwähler, hell/dunkel, Ordnerfarbe, eigene Hintergrundbilder, Live-Vorschau. Mitgelieferte Themes sind schreibgeschützt: anwenden oder duplizieren und die Kopie anpassen |
 | **Obere Leiste** | Schlank, Uhr in JetBrainsMono Nerd Font, nur WLAN/Bluetooth/Lautstärke/Akku sichtbar, alle Symbole einfarbig in Theme-Farbe |
 | **Musik-Player** | Oben links, mit Audiowelle, Titel und Steuerung. Zeigt und steuert, was gerade läuft, egal in welcher App: Spotify, YouTube Music im Browser, VLC und jeder andere Player (MPRIS). Titel und Steuerung erscheinen, solange etwas läuft |

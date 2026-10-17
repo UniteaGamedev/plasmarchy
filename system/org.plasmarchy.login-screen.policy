@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Lets the logged-in user match the login screen to the Plasmarchy theme without a password.
+     The helper only accepts validated data (colors, effect, images), see /usr/local/lib/plasmarchy/login-screen. -->
+<policyconfig>
+  <vendor>Plasmarchy</vendor>
+  <vendor_url>https://github.com/UniteaGamedev/plasmarchy</vendor_url>
+  <action id="org.plasmarchy.login-screen">
+    <description>Match the login screen to the Plasmarchy theme</description>
+    <description xml:lang="de">Anmeldebildschirm an das Plasmarchy-Theme anpassen</description>
+    <message>Plasmarchy wants to change the login screen wallpaper and colors</message>
+    <message xml:lang="de">Plasmarchy möchte Hintergrund und Farben des Anmeldebildschirms ändern</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/plasmarchy/login-screen</annotate>
+  </action>
+</policyconfig>

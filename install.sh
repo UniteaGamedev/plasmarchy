@@ -4,6 +4,7 @@
 #   ./install.sh               set up everything (asks once for the sudo password for packages)
 #   ./install.sh --no-layout   don't touch the panels/dock
 #   ./install.sh --no-packages don't install packages (e.g. for updates)
+#   ./install.sh --no-login-screen  leave the login screen alone (no system-wide files)
 #
 # All affected KDE settings are backed up first; ./uninstall.sh restores them.
 set -euo pipefail
@@ -19,11 +20,12 @@ DEFAULT_THEME="osaka-jade"
 
 t() { python3 -I "$SRC/lib/i18n.py" tr "$@"; }   # translated message
 
-LAYOUT=1; PACKAGES=1
+LAYOUT=1; PACKAGES=1; LOGIN_SCREEN=1
 for a in "$@"; do
     case "$a" in
         --no-layout)   LAYOUT=0 ;;
         --no-packages) PACKAGES=0 ;;
+        --no-login-screen) LOGIN_SCREEN=0 ;;
         *) t "Unknown option: {0}" "$a"; exit 1 ;;
     esac
 done
@@ -108,6 +110,14 @@ for pkg in "$BASE"/plasmoids/*/; do
     done
     kpackagetool6 -t "$type" -u "$pkg" >/dev/null 2>&1 || kpackagetool6 -t "$type" -i "$pkg" >/dev/null
 done
+
+# Login screen: the animated wallpaper and a helper that matches the login screen to the theme
+# (system-wide, so it needs the password once; theme switches then update it without asking)
+if [ "$LOGIN_SCREEN" = 1 ] && [ -f /etc/plasmalogin.conf ]; then
+    step "$(t "Setting up the login screen (asks for the sudo password)")"
+    sudo bash "$SRC/system/setup.sh" install "$SRC" \
+        || warn "$(t "Login screen not set up. It keeps its current look.")"
+fi
 
 # --- 5. Prepare themes -------------------------------------------------------------------------
 step "$(t "Generating color schemes, folder colors and previews")"

@@ -174,6 +174,8 @@ apply_theme() {      # $1 theme, $2 wallpaper index (optional)
     fi
     mkdir -p "$STATE_DIR"
     printf '%s\n%s\n' "$slug" "$idx" > "$STATE"
+    # Login screen in the same look (in the background: the root helper takes a moment)
+    (py login_screen.py apply "$slug" >/dev/null 2>&1 &)
     run_hooks "$slug"
     # Themes can greet you when you switch to them (kde.conf GREETING_*), e.g. Cachy Matrix's Morpheus
     if [ "$previous" != "$slug" ]; then
@@ -207,6 +209,7 @@ restore() {
     else
         kwriteconfig6 --file konsolerc --group 'Desktop Entry' --key DefaultProfile --delete
     fi
+    py login_screen.py reset >/dev/null 2>&1 || true
     rm -f "$STATE"
     run_hooks ""
     t "Previous look restored."

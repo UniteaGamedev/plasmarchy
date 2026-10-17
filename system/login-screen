@@ -1,0 +1,188 @@
+#!/usr/bin/python3 -I
+"""Plasmarchy login screen helper (runs as root via pkexec, see org.plasmarchy.login-screen.policy).
+
+Matches the Plasma Login Manager to the active theme: wallpaper (still image or the animated
+org.plasmarchy.animated wallpaper) and the colors of the login box.
+
+  pkexec /usr/local/lib/plasmarchy/login-screen apply < payload.json
+  pkexec /usr/local/lib/plasmarchy/login-screen reset
+
+The active user may run it without a password, so it only accepts data, never code or paths:
+every value is validated, images are read from stdin (not from a path root would open), and the
+wallpaper plugin itself is installed system-wide by install.sh with the admin password.
+
+Payload: {"plugin": "org.kde.image" | "org.plasmarchy.animated",
+          "image": <base64 JPEG/PNG>,             (org.kde.image)
+          "config": {...}, "logo": <base64 PNG>,   (org.plasmarchy.animated, see its main.xml)
+          "colors": {"Colors:View": {"BackgroundNormal": "17,28,24", ...}, ...}}
+"""
+import base64
+import binascii
+import glob
+import json
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+
+CONF = "/etc/plasmalogin.conf"
+HOME = "/var/lib/plasmalogin"
+WALLPAPERS = os.path.join(HOME, "wallpapers")
+KDEGLOBALS = os.path.join(HOME, ".config", "kdeglobals")
+KDEGLOBALS_BACKUP = KDEGLOBALS + ".plasmarchy-backup"
+ANIMATED = "org.plasmarchy.animated"
+PLUGINS = ("org.kde.image", ANIMATED)
+MAX_IMAGE = 40 * 1024 * 1024
+MAX_INPUT = 64 * 1024 * 1024
+
+HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+RGB = re.compile(r"^\d{1,3},\d{1,3},\d{1,3}$")
+NAME = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,40}$")
+EFFECTS = ("aurora", "particles", "rain", "logo")
+
+
+def fail(msg):
+    raise SystemExit(f"login-screen: {msg}")
+
+
+def kwrite(file, groups, key, value=None):
+    cmd = ["kwriteconfig6", "--file", file]
+    for g in groups:
+        cmd += ["--group", g]
+    cmd += ["--key", key] + (["--delete"] if value is None else ["--", value])
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def image(data, kinds):
+    try:
+        raw = base64.b64decode(data or "", validate=True)
+    except (binascii.Error, ValueError):
+        fail("image is not base64")
+    if len(raw) > MAX_IMAGE:
+        fail("image too large")
+    if raw.startswith(b"\x89PNG\r\n\x1a\n") and "png" in kinds:
+        return raw, "png"
+    if raw.startswith(b"\xff\xd8\xff") and "jpg" in kinds:
+        return raw, "jpg"
+    fail("not a " + "/".join(kinds) + " image")
+
+
+def store(raw, name):
+    """Write an image the greeter (user plasmalogin) can read; returns its path."""
+    os.makedirs(WALLPAPERS, mode=0o755, exist_ok=True)
+    path = os.path.join(WALLPAPERS, name)
+    tmp = path + ".tmp"
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644), "wb") as f:
+        f.write(raw)
+    os.replace(tmp, path)
+    return path
+
+
+def clear_images():
+    for f in glob.glob(os.path.join(WALLPAPERS, "plasmarchy-*")):
+        os.remove(f)
+
+
+def animated_config(cfg, logo):
+    out = {}
+    if cfg.get("effect") not in EFFECTS:
+        fail("unknown effect")
+    out["effect"] = cfg["effect"]
+    for k in ("background", "darkBackground", "foreground", "accent"):
+        if not HEX.match(str(cfg.get(k, ""))):
+            fail(f"{k} must be #rrggbb")
+        out[k] = cfg[k]
+    palette = str(cfg.get("palette", "")).split(",")
+    if not all(HEX.match(c) for c in palette) or len(palette) > 16:
+        fail("palette must be #rrggbb,...")
+    out["palette"] = ",".join(palette)
+    ascii_logo = cfg.get("logoAscii", "")
+    if not isinstance(ascii_logo, str) or len(ascii_logo) > 32768:
+        fail("logoAscii too long")
+    out["logoAscii"] = ascii_logo
+    for k in ("showLogo", "logoAnimated"):
+        out[k] = "true" if cfg.get(k) is True else "false"
+    try:
+        out["speed"] = str(min(max(float(cfg.get("speed", 1.0)), 0.1), 5.0))
+    except (TypeError, ValueError):
+        fail("speed must be a number")
+    out["pauseWhenCovered"] = "false"   # nothing covers the login screen
+    out["logo"] = store(image(logo, ("png",))[0], "plasmarchy-logo.png") if logo else ""
+    if not out["logo"]:
+        out["showLogo"] = "false"
+    return out
+
+
+def colors(groups):
+    """Copy the theme's color groups into the greeter's kdeglobals (like the KCM's "Apply Plasma Settings")."""
+    if not isinstance(groups, dict) or len(groups) > 32:
+        fail("colors must be an object")
+    pw = pwd.getpwnam("plasmalogin")
+    os.makedirs(os.path.dirname(KDEGLOBALS), exist_ok=True)
+    if os.path.isfile(KDEGLOBALS) and not os.path.exists(KDEGLOBALS_BACKUP):
+        shutil.copy2(KDEGLOBALS, KDEGLOBALS_BACKUP)
+    for group, entries in groups.items():
+        if not re.match(r"^(Colors:[A-Za-z]+|WM)$", group) or not isinstance(entries, dict):
+            fail(f"bad color group {group!r}")
+        for key, value in entries.items():
+            if not NAME.match(key) or not RGB.match(str(value)):
+                fail(f"bad color {group}/{key}")
+            kwrite(KDEGLOBALS, [group], key, str(value))
+    os.chown(KDEGLOBALS, pw.pw_uid, pw.pw_gid)
+
+
+def apply(payload):
+    plugin = payload.get("plugin")
+    if plugin not in PLUGINS:
+        fail("unknown wallpaper plugin")
+    if plugin == ANIMATED and not os.path.isfile(f"/usr/local/share/plasma/wallpapers/{ANIMATED}/metadata.json"):
+        fail("the animated wallpaper is not installed system-wide (run install.sh)")
+    clear_images()
+    if plugin == ANIMATED:
+        for k, v in animated_config(payload.get("config") or {}, payload.get("logo")).items():
+            kwrite(CONF, ["Greeter", "Wallpaper", ANIMATED, "General"], k, v)
+    else:
+        raw, ext = image(payload.get("image"), ("jpg", "png"))
+        url = "file://" + store(raw, f"plasmarchy-wallpaper.{ext}")
+        for k in ("Image", "PreviewImage"):
+            kwrite(CONF, ["Greeter", "Wallpaper", "org.kde.image", "General"], k, url)
+    kwrite(CONF, ["Greeter"], "WallpaperPluginId", plugin)
+    if "colors" in payload:
+        colors(payload["colors"])
+
+
+def reset():
+    """Back to the login screen from before Plasmarchy."""
+    kwrite(CONF, ["Greeter"], "WallpaperPluginId")
+    for k in ("Image", "PreviewImage"):
+        kwrite(CONF, ["Greeter", "Wallpaper", "org.kde.image", "General"], k)
+    clear_images()
+    if os.path.isfile(KDEGLOBALS_BACKUP):
+        os.replace(KDEGLOBALS_BACKUP, KDEGLOBALS)
+
+
+def main():
+    if os.geteuid() != 0:
+        fail("must run as root (pkexec)")
+    cmd = sys.argv[1] if len(sys.argv) == 2 else ""
+    if cmd == "apply":
+        data = sys.stdin.buffer.read(MAX_INPUT + 1)
+        if len(data) > MAX_INPUT:
+            fail("input too large")
+        try:
+            payload = json.loads(data)
+        except ValueError:
+            fail("input is not JSON")
+        if not isinstance(payload, dict):
+            fail("input must be an object")
+        apply(payload)
+    elif cmd == "reset":
+        reset()
+    else:
+        raise SystemExit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

@@ -14,10 +14,11 @@ cd plasmarchy
 ./install.sh
 ```
 
-The installer asks once for the sudo password (for packages), backs up every KDE setting it touches and then
+The installer asks for the sudo password (for packages and the login screen), backs up every KDE setting it touches and then
 sets everything up. **Undo:** `./uninstall.sh` restores the previous state.
 
-Options: `--no-layout` (don't touch the panels/dock), `--no-packages` (no packages, e.g. for updates).
+Options: `--no-layout` (don't touch the panels/dock), `--no-packages` (no packages, e.g. for updates),
+`--no-login-screen` (leave the login screen alone).
 **Update:** `git pull && ./install.sh --no-packages`
 
 ## What you get
@@ -27,7 +28,7 @@ Options: `--no-layout` (don't touch the panels/dock), `--no-packages` (no packag
 | **Themes** | 8 core themes: Osaka Jade, Tokyo Night, Catppuccin Latte, Everforest, Nord, Rosé Pine, Matte Black (from Omarchy) and Cachy Matrix (animated digital rain, with a greeting from Morpheus). Plus a **theme catalog** (Theme Studio → More themes) with more themes to install, e.g. Catppuccin, Gruvbox, Kanagawa, Ristretto, Neon Drift, Ember. Any theme can be removed and comes back from the catalog |
 | **Menu** | The Windows key opens an Omarchy-style menu: Apps, Learn, Toggle, Style, Capture, Setup, AI assistant, Software, About, System. Type to search all entries and apps (with KRunner as fallback), arrow keys to navigate |
 | **Animated wallpapers** | Aurora, particles, Matrix-style code rain or a logo animation in the theme's colors. Your logo glows, builds itself up like in the screensaver, or stays hidden. Pauses automatically while a maximized or fullscreen window covers the desktop. Any theme can be animated |
-| **Theme switcher** | Carousel with slanted previews (←/→, Enter). Switches the colors of all apps, the panel, window borders, icons (Papirus with a matching folder color), wallpaper, lock screen and terminal in ~0.3 s |
+| **Theme switcher** | Carousel with slanted previews (←/→, Enter). Switches the colors of all apps, the panel, window borders, icons (Papirus with a matching folder color), wallpaper, lock screen, login screen and terminal in ~0.3 s |
 | **Theme Studio** | Create, edit and delete your own themes: all 25 colors with a color picker, light/dark, folder color, your own wallpapers, live preview. Built-in themes are read-only: apply them, or duplicate one to customize it |
 | **Top bar** | Slim, clock in JetBrainsMono Nerd Font, only Wi-Fi/Bluetooth/volume/battery visible, all icons monochrome in the theme color |
 | **Music player** | Top left, with audio wave, title and controls. Shows and controls whatever plays, in any app: Spotify, YouTube Music in the browser, VLC and every other player (MPRIS). Title and controls appear while something plays |
