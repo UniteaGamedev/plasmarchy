@@ -18,7 +18,7 @@
 #   plasmarchy ask "<question>"     ask the AI assistant (connected AI, e.g. Claude Code)
 #   plasmarchy voice setup          set up voice (local speech recognition + text-to-speech)
 #   plasmarchy talk                 start/stop a conversation (default hotkey Meta+Shift+Space)
-#   plasmarchy music setup [youtube] built-in Spotify player (Premium) or YouTube Music: install (+ sign in)
+#   plasmarchy music setup          built-in YouTube Music: install what it needs
 #   plasmarchy settings             assistant settings (get | set KEY VALUE)
 #   plasmarchy llm setup            set up a local language model (Ollama; fallback and offline AI)
 #   plasmarchy app <name>           launch an app by name (also used by the assistant)
@@ -532,8 +532,7 @@ case "${1:-pick}" in
     voice)          py voice.py "${@:2}" ;;
     talk)           py talk.py ;;
     music)          case "${2:-}" in
-                        setup)          if [ "${3:-}" = youtube ]; then terminal "sudo pacman -S --needed yt-dlp mpv-mpris"
-                                        else terminal "sudo pacman -S --needed spotify-launcher && $0 music sp-open"; fi ;;
+                        setup)          terminal "sudo pacman -S --needed yt-dlp mpv-mpris" ;;
                         open-terminal)  (alacritty 2>/dev/null || konsole) >/dev/null 2>&1 & ;;
                         *)              py music.py "${@:2}" ;;
                     esac ;;

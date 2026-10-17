@@ -8,7 +8,5 @@
     <entry name="show" type="String"><default>always</default></entry>
     <entry name="showTitle" type="Bool"><default>true</default></entry>
     <entry name="maxTitleWidth" type="Int"><default>16</default></entry>
-    <!-- source in the popup: spotify | youtube -->
-    <entry name="source" type="String"><default>spotify</default></entry>
   </group>
 </kcfg>

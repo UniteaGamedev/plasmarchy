@@ -30,7 +30,7 @@ Optionen: `--no-layout` (Leisten/Dock nicht anfassen), `--no-packages` (keine Pa
 | **Theme-Wechsel** | Karussell mit schrägen Vorschauen (←/→, Enter). Wechselt Farben aller Programme, Leiste, Fensterrahmen, Symbole (Papirus mit passender Ordnerfarbe), Hintergrund, Sperrbildschirm und Terminal in ~0,3 s |
 | **Theme Studio** | Eigene Themes anlegen, bearbeiten, löschen: alle 25 Farben mit Farbwähler, hell/dunkel, Ordnerfarbe, eigene Hintergrundbilder, Live-Vorschau. Mitgelieferte Themes sind schreibgeschützt: anwenden oder duplizieren und die Kopie anpassen |
 | **Obere Leiste** | Schlank, Uhr in JetBrainsMono Nerd Font, nur WLAN/Bluetooth/Lautstärke/Akku sichtbar, alle Symbole einfarbig in Theme-Farbe |
-| **Musik-Player** | Oben links, mit Audiowelle, Titel und Steuerung. Eingebaut: **YouTube Music** (Suche, endloses Radio, Cover; über mpv, ohne Browser oder App). **Spotify** über die offizielle App: Suchen öffnen sich darin, gesteuert wird aus der Leiste. Steuert auch jeden anderen Player (MPRIS). Einrichtung direkt im Popup |
+| **Musik-Player** | Oben links, mit Audiowelle, Titel und Steuerung. Eingebaut: **YouTube Music** (Suche, endloses Radio, Cover; über mpv, ohne Browser oder App). Steuert auch jeden anderen Player (MPRIS), zum Beispiel Musik im Browser. Einrichtung direkt im Popup |
 | **Dock** | Schwebend, abgerundet, Glas-Effekt, weicht Fenstern aus |
 | **KI-Assistent** | Roboter-Symbol im System-Tray (oder Meta+A, wie bei Omarchy): Chat mit der verbundenen KI: Claude Code (nutzt dein Abo), Cursor, Codex, Gemini CLI oder ein lokales Modell (Ollama), automatisch erkannt. **Ausweich-Kette:** Ist eine KI am Limit, nicht angemeldet oder nicht erreichbar, antwortet automatisch die nächste, mit verständlichem Hinweis. Optional darf die KI Apps öffnen, das Theme und die Lautstärke ändern |
 | **Mit dem PC sprechen** | **Meta+Shift+Leertaste** (einstellbar) oder ein optionales Weckwort startet ein Gespräch: zuhören bis zur Sprechpause (oder Kürzel nochmal drücken, um sofort abzusenden), Antwort wird vorgelesen, danach ein paar Sekunden für Rückfragen. „Stopp“/„Danke“ beendet. Mikrofon nur während des Gesprächs offen; Erkennung (whisper.cpp, mit CUDA auf der GPU) und Stimme (Piper) laufen lokal |
@@ -54,7 +54,7 @@ plasmarchy theme <name>       Theme direkt setzen (plasmarchy themes = Liste)
 plasmarchy studio             Theme Studio (Katalog: plasmarchy studio catalog)
 plasmarchy configure          Plasmarchy-Einstellungen
 plasmarchy themes available   Theme-Katalog (install|remove <name>)
-plasmarchy music setup        eingebautes Spotify (Premium); music setup youtube: YouTube Music
+plasmarchy music setup        eingebautes YouTube Music: nötige Pakete installieren
 plasmarchy next-bg            Nächstes Hintergrundbild
 plasmarchy screensaver        Screensaver starten
 plasmarchy branding           Logo zeigen/ändern (text "Name" | image <datei> | edit)

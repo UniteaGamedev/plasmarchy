@@ -1,15 +1,11 @@
 #!/usr/bin/python3 -I
 """Music for the top bar.
 
-Spotify: the official Spotify app (spotify-launcher). The widget controls it through MPRIS and sends searches
-to it; signing in happens once in the app itself. YouTube Music: built in, no app needed. Its search API finds
-songs, mpv plays them (audio only) and a picked song starts a radio that never runs out (radio.lua). The widget
-shows and controls both through MPRIS (mpv needs mpv-mpris).
+YouTube Music, built in, no app needed: its search API finds songs, mpv plays them (audio only) and a picked
+song starts a radio that never runs out (radio.lua). The widget shows and controls it through MPRIS (mpv needs
+mpv-mpris), like every other player.
 
-  music.py status                   JSON: what is installed / running, per source
-  music.py sp-open                  start the Spotify app (or bring it up)
-  music.py sp-search <query>        show the search results in the Spotify app
-  music.py sp-search64 <base64>     the same, query base64 encoded (from the widget)
+  music.py status                   JSON: is YouTube Music installed / running
   music.py yt-search <query>        JSON: songs on YouTube Music
   music.py yt-play <id|url>         play a song (as a radio) or a YouTube/YouTube Music link
   music.py yt-now                   JSON: cover of the song our mpv plays
@@ -32,55 +28,12 @@ RUN = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
 MPV_SOCKET = os.path.join(RUN, "plasmarchy-mpv.sock")
 MPRIS_PLUGINS = ["/etc/mpv/scripts/mpris.so", "/usr/share/mpv/scripts/mpris.so", "/usr/lib/mpv-mpris/mpris.so",
                  os.path.join(HOME, ".config/mpv/scripts/mpris.so")]
-SPOTIFY_BUS = "org.mpris.MediaPlayer2.spotify"
-
-
-def spotify_binary():
-    for name in ("spotify-launcher", "spotify"):
-        path = shutil.which(name)
-        if path:
-            return [path]
-    if shutil.which("flatpak") and subprocess.run(["flatpak", "info", "com.spotify.Client"],
-                                                  capture_output=True).returncode == 0:
-        return ["flatpak", "run", "com.spotify.Client"]
-    return None
-
-
-def spotify_running():
-    return subprocess.run(["busctl", "--user", "status", SPOTIFY_BUS], capture_output=True).returncode == 0
 
 
 def status():
     yt = yt_status()
     yt["running"] = subprocess.run(["pgrep", "-f", MPV_SOCKET], capture_output=True).returncode == 0   # our mpv
-    return {"installed": bool(spotify_binary()), "running": spotify_running(), "youtube": yt}
-
-
-def sp_open():
-    """Start the Spotify app if it isn't running and wait until it can be controlled."""
-    cmd = spotify_binary()
-    if not cmd:
-        raise SystemExit(tr("Spotify isn't set up yet"))
-    if not spotify_running():
-        spawn(cmd, "spotify")
-        for _ in range(60):
-            time.sleep(0.5)
-            if spotify_running():
-                time.sleep(1)   # the app needs a moment before it accepts commands
-                break
-    return {"ok": True}
-
-
-def sp_search(query):
-    """Show the search results in the Spotify app (Spotify offers no search without a developer app)."""
-    import urllib.parse
-    sp_open()
-    uri = "spotify:search:" + urllib.parse.quote(query)
-    subprocess.run(["busctl", "--user", "call", SPOTIFY_BUS, "/org/mpris/MediaPlayer2",
-                    "org.mpris.MediaPlayer2.Player", "OpenUri", "s", uri], capture_output=True)
-    subprocess.run(["busctl", "--user", "call", SPOTIFY_BUS, "/org/mpris/MediaPlayer2",
-                    "org.mpris.MediaPlayer2", "Raise"], capture_output=True)
-    return {"ok": True}
+    return yt
 
 
 def mpris_plugin():
@@ -311,13 +264,6 @@ def main():
     try:
         if cmd == "status":
             result = status()
-        elif cmd == "sp-open":
-            result = sp_open()
-        elif cmd == "sp-search" and len(a) >= 2:
-            result = sp_search(" ".join(a[1:]))
-        elif cmd == "sp-search64" and len(a) == 2:   # from the widget
-            import base64
-            result = sp_search(base64.b64decode(a[1]).decode("utf-8"))
         elif cmd == "yt-search" and len(a) >= 2:
             result = yt_search(" ".join(a[1:]))
         elif cmd == "yt-search64" and len(a) == 2:   # from the widget

@@ -1,6 +1,6 @@
 // Music player for the top bar.
-// Sources: YouTube Music (built in: search, radio) and Spotify (the official app: searches open in it).
-// It also shows and controls any other MPRIS player (YouTube Music or SoundCloud in a browser, VLC, ...).
+// Built in: YouTube Music (search, radio). It also shows and controls any other MPRIS player
+// (YouTube Music or SoundCloud in a browser, VLC, ...).
 // Top bar: audio wave, title, previous / play-pause / next. Click: popup. Scroll: previous/next track.
 import QtQuick
 import QtQuick.Layouts
@@ -18,8 +18,8 @@ PlasmoidItem {
 
     readonly property string mono: "JetBrainsMono Nerd Font"
     readonly property string bin: "\"$HOME/.local/bin/plasmarchy\""
-    // The player to show: we pick it ourselves instead of Plasma's automatic choice, because an idle Spotify
-    // daemon reports "Playing" without any song and would hide the music that really plays. Only players with
+    // The player to show: we pick it ourselves instead of Plasma's automatic choice, because an idle player can
+    // report "Playing" without any song and would hide the music that really plays. Only players with
     // a song count; a playing one wins over a paused one; a tab the user clicked wins over both.
     property int playersRev: 0
     property int chosenIndex: -1
@@ -56,12 +56,12 @@ PlasmoidItem {
     }
     readonly property var player: pick.player
     // our mpv (YouTube Music) reports no cover: ask for it whenever the song changes
-    readonly property bool ownYoutube: !!player && player.identity === "mpv" && !!spotify.youtube && !!spotify.youtube.running
+    readonly property bool ownYoutube: !!player && player.identity === "mpv" && !!yt.running
     property string ytCover: ""
     readonly property string coverUrl: player && player.artUrl ? player.artUrl : ownYoutube ? ytCover : ""
     onTitleChanged: if (ownYoutube) run("yt-now")
     onOwnYoutubeChanged: if (ownYoutube) run("yt-now")
-    readonly property bool hasPlayer: !!player && player.track !== ""   // an idle player (e.g. Spotify's daemon) doesn't count
+    readonly property bool hasPlayer: !!player && player.track !== ""   // an idle player without a song doesn't count
     readonly property bool playing: !!player && player.playbackStatus === Mpris.PlaybackStatus.Playing
     readonly property string show: Plasmoid.configuration.show
     readonly property bool visibleInBar: show === "always" || (show === "auto" && hasPlayer)
@@ -71,16 +71,13 @@ PlasmoidItem {
     readonly property string artist: !player || loading ? "" : (player.artist || "")
     readonly property string line: artist && title ? artist + " · " + title : title
 
-    property var spotify: ({ installed: false, running: false })   // status of both sources (see music.py)
+    property var yt: ({ installed: false, running: false })   // YouTube Music set up / playing (music.py status)
     property string busy: ""
-    property var errors: ({ spotify: "", youtube: "" })   // per source, so Spotify's errors don't show on YouTube
-    readonly property string error: errors[youtube ? "youtube" : "spotify"] || ""
-    function setError(src, text) { var e = Object.assign({}, errors); e[src] = text; errors = e }
+    property string error: ""
 
     // player names as people know them: our mpv plays YouTube Music
     function niceName(identity) {
-        if (identity === "mpv" && spotify.youtube && spotify.youtube.running) return "YouTube Music"
-        if (/spotify/i.test(identity)) return "Spotify"
+        if (identity === "mpv" && yt.running) return "YouTube Music"
         return identity
     }
     function fmt(us) {
@@ -88,28 +85,14 @@ PlasmoidItem {
         return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
     }
     function run(args) { exec.connectSource("sh -c 'exec " + bin + " music " + args + "'") }
-    readonly property bool youtube: Plasmoid.configuration.source === "youtube"
     property var ytResults: []
     function play(item) {
-        busy = item.name; setError("youtube", "")
+        busy = item.name; error = ""
         run("yt-play " + item.id)
     }
     function search(text) {
-        busy = "search"; setError(youtube ? "youtube" : "spotify", "")
-        // Spotify shows its results in the app itself (searching inside the popup would need a developer app)
-        run((youtube ? "yt-search64 " : "sp-search64 ") + Qt.btoa(text))
-    }
-
-    // source switch (Spotify / YouTube Music) next to the search field
-    component SourceButton: PC3.ToolButton {
-        required property string source
-        required property string label
-        checkable: true
-        checked: Plasmoid.configuration.source === source
-        display: PC3.AbstractButton.IconOnly
-        text: label
-        onClicked: { Plasmoid.configuration.source = source; checked = Qt.binding(() => Plasmoid.configuration.source === source) }
-        PC3.ToolTip { text: parent.label }
+        busy = "search"; error = ""
+        run("yt-search64 " + Qt.btoa(text))
     }
 
     Mpris.Mpris2Model { id: mpris }
@@ -121,10 +104,8 @@ PlasmoidItem {
             disconnectSource(source)
             var out
             try { out = JSON.parse(data.stdout) } catch (e) { out = null }
-            if (out && out.error && source.indexOf(" music status") < 0)
-                root.setError(source.indexOf(" music yt-") >= 0 ? "youtube" : "spotify", out.error)
-            if (source.indexOf(" music status") >= 0) { if (out) root.spotify = out }
-            else if (source.indexOf(" music sp-") >= 0) { root.busy = ""; root.run("status") }
+            if (out && out.error && source.indexOf(" music status") < 0) root.error = out.error
+            if (source.indexOf(" music status") >= 0) { if (out) root.yt = out }
             else if (source.indexOf(" music yt-search64 ") >= 0) { if (out && out.items) root.ytResults = out.items; root.busy = "" }
             else if (source.indexOf(" music yt-now") >= 0) { if (out) root.ytCover = out.image || "" }
             else if (source.indexOf(" music play ") >= 0 || source.indexOf(" music yt-play ") >= 0) { root.busy = ""; root.run("status") }
@@ -253,7 +234,7 @@ PlasmoidItem {
         collapseMarginsHint: true
 
         header: PlasmaExtras.PlasmoidHeading {
-            // only when more than one player has something loaded (an idle Spotify daemon doesn't count)
+            // only when more than one player has something loaded (an idle player doesn't count)
             visible: root.pick.count > 1
             RowLayout {
                 anchors.fill: parent
@@ -369,36 +350,23 @@ PlasmoidItem {
 
             Kirigami.Separator { Layout.fillWidth: true }
 
-            // --- Source: Spotify / YouTube Music, two small icons next to the search ---------------------
-            RowLayout {
+            PlasmaExtras.SearchField {
                 Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-                SourceButton { source: "spotify"; label: "Spotify"; icon.name: "spotify" }
-                SourceButton { source: "youtube"; label: "YouTube Music"; icon.name: "youtube-music" }
-                PlasmaExtras.SearchField {
-                    id: searchField
-                    Layout.fillWidth: true
-                    visible: root.youtube ? (root.spotify.youtube && root.spotify.youtube.installed) : !!root.spotify.installed
-                    placeholderText: root.youtube ? i18n("Search YouTube Music …") : i18n("Search Spotify …")
-                    onAccepted: if (text.trim()) root.search(text.trim())
-                    onTextChanged: if (text === "") root.ytResults = []
-                }
-                Item { Layout.fillWidth: true; visible: !searchField.visible }
+                visible: !!root.yt.installed
+                placeholderText: i18n("Search YouTube Music …")
+                onAccepted: if (text.trim()) root.search(text.trim())
+                onTextChanged: if (text === "") root.ytResults = []
             }
 
             // not set up yet: what to do, the command to copy, a terminal, or set it up automatically
             ColumnLayout {
                 id: setupCard
-                readonly property bool ytMissing: root.youtube && !(root.spotify.youtube && root.spotify.youtube.installed)
-                readonly property bool spMissing: !root.youtube && !root.spotify.installed
-                readonly property string command: root.youtube ? "sudo pacman -S --needed yt-dlp mpv-mpris"
-                                                  : "sudo pacman -S --needed spotify-launcher"
+                readonly property string command: "sudo pacman -S --needed yt-dlp mpv-mpris"
                 // what to do in steps, so the text doesn't read as one block
-                readonly property var steps: root.youtube
-                    ? [i18n("Click “%1”. Plasmarchy installs the two small packages it needs.", i18n("Set up automatically"))]
-                    : [i18n("Click “%1”. Plasmarchy installs the app.", i18n("Set up automatically")),
-                       i18n("Sign in once in the Spotify app.")]
-                visible: ytMissing || spMissing
+                readonly property var steps: [
+                    i18n("Click “%1”. Plasmarchy installs the two small packages it needs.", i18n("Set up automatically")),
+                    i18n("Search for a song. It starts a radio with similar music.")]
+                visible: !root.yt.installed
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.topMargin: Kirigami.Units.largeSpacing
@@ -410,16 +378,14 @@ PlasmoidItem {
                         Layout.fillWidth: true
                         level: 4
                         wrapMode: Text.WordWrap
-                        text: root.youtube ? i18n("YouTube Music isn't set up yet")
-                            : i18n("Spotify isn't set up yet")
+                        text: i18n("YouTube Music isn't set up yet")
                     }
                     PC3.Label {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         lineHeight: 1.25
                         opacity: 0.7
-                        text: root.youtube ? i18n("Play YouTube Music right here and in the top bar.")
-                            : i18n("Spotify runs in the official Spotify app. You control it right here and in the top bar.")
+                        text: i18n("Play YouTube Music right here and in the top bar.")
                     }
                 }
                 ColumnLayout {   // numbered steps
@@ -456,8 +422,7 @@ PlasmoidItem {
                         icon.name: "run-build"
                         onClicked: {
                             root.expanded = false
-                            exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music "
-                                + (root.youtube ? "setup youtube" : "setup") + "'")
+                            exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music setup'")
                         }
                     }
                     PC3.Button {
@@ -504,38 +469,9 @@ PlasmoidItem {
                 Item { Layout.fillHeight: true }
             }
 
-            // Spotify: searches open in the app; playback is controlled here and in the top bar
-            ColumnLayout {
-                visible: !root.youtube && !!root.spotify.installed
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: Kirigami.Units.largeSpacing
-                PC3.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    opacity: 0.6
-                    font: Kirigami.Theme.smallFont
-                    text: i18n("Search results open in the Spotify app. Play, pause and skip right here and in the top bar.")
-                }
-                PC3.Button {
-                    visible: !root.spotify.running
-                    text: i18n("Open Spotify")
-                    icon.name: "spotify"
-                    onClicked: { root.busy = "spotify"; root.run("sp-open") }
-                }
-                PC3.Label {
-                    visible: root.error !== ""
-                    text: root.error
-                    color: Kirigami.Theme.negativeTextColor
-                    wrapMode: Text.WordWrap; Layout.fillWidth: true
-                    font: Kirigami.Theme.smallFont
-                }
-                Item { Layout.fillHeight: true }
-            }
-
             // YouTube Music: search results
             ColumnLayout {
-                visible: root.youtube && !!root.spotify.youtube && root.spotify.youtube.installed
+                visible: !!root.yt.installed
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: Kirigami.Units.largeSpacing
@@ -547,7 +483,7 @@ PlasmoidItem {
                     font: Kirigami.Theme.smallFont
                 }
                 PC3.Label {
-                    visible: root.youtube && root.ytResults.length === 0 && root.busy === ""
+                    visible: root.ytResults.length === 0 && root.busy === ""
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     opacity: 0.55
