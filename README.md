@@ -30,7 +30,7 @@ Options: `--no-layout` (don't touch the panels/dock), `--no-packages` (no packag
 | **Theme switcher** | Carousel with slanted previews (←/→, Enter). Switches the colors of all apps, the panel, window borders, icons (Papirus with a matching folder color), wallpaper, lock screen and terminal in ~0.3 s |
 | **Theme Studio** | Create, edit and delete your own themes: all 25 colors with a color picker, light/dark, folder color, your own wallpapers, live preview. Built-in themes are read-only: apply them, or duplicate one to customize it |
 | **Top bar** | Slim, clock in JetBrainsMono Nerd Font, only Wi-Fi/Bluetooth/volume/battery visible, all icons monochrome in the theme color |
-| **Music player** | Top left, with audio wave, title and controls. Built in: **YouTube Music** (search, a radio that keeps going, covers; via mpv, no browser or app needed). Also controls any other player (MPRIS), for example music in the browser. Setup right from the popup |
+| **Music player** | Top left, with audio wave, title and controls. Shows and controls whatever plays, in any app: Spotify, YouTube Music in the browser, VLC and every other player (MPRIS). Title and controls appear while something plays |
 | **Dock** | Floating, rounded, glass effect, dodges windows |
 | **AI assistant** | Robot icon in the system tray (or Meta+A, like Omarchy): chat with the connected AI: Claude Code (uses your subscription), Cursor, Codex, Gemini CLI or a local model (Ollama), detected automatically. **Fallback chain:** if an AI hits its limit, is signed out or can't be reached, the next one answers automatically, with a clear notice. Optionally the AI may open apps and change the theme and volume |
 | **Talk to your computer** | **Meta+Shift+Space** (configurable) or an optional wake word starts a conversation: it listens until you pause (or press the hotkey again to send right away), reads the answer aloud and then listens a few more seconds for follow-ups. Saying "stop"/"thanks" ends it. The microphone is only open during a conversation; recognition (whisper.cpp, on the GPU when CUDA is available) and voice (Piper) run locally |
@@ -54,7 +54,6 @@ plasmarchy theme <name>       set a theme directly (plasmarchy themes = list)
 plasmarchy studio             Theme Studio (catalog: plasmarchy studio catalog)
 plasmarchy configure          Plasmarchy settings
 plasmarchy themes available   theme catalog (install|remove <name>)
-plasmarchy music setup        built-in YouTube Music: install what it needs
 plasmarchy next-bg            next wallpaper
 plasmarchy screensaver        start the screensaver
 plasmarchy branding           show/change the logo (text "Name" | image <file> | edit)

@@ -1,15 +1,12 @@
-// Music player for the top bar.
-// Built in: YouTube Music (search, radio). It also shows and controls any other MPRIS player
-// (YouTube Music or SoundCloud in a browser, VLC, ...).
+// Music player for the top bar: shows and controls whatever plays, in any app (MPRIS: Spotify, a browser,
+// VLC, ...). The music itself is started where the user likes, the player doesn't play anything on its own.
 // Top bar: audio wave, title, previous / play-pause / next. Click: popup. Scroll: previous/next track.
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC2
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PC3
 import org.kde.plasma.extras as PlasmaExtras
-import org.kde.plasma.plasma5support as P5Support
 import org.kde.plasma.private.mpris as Mpris
 import org.kde.kirigami as Kirigami
 
@@ -17,7 +14,6 @@ PlasmoidItem {
     id: root
 
     readonly property string mono: "JetBrainsMono Nerd Font"
-    readonly property string bin: "\"$HOME/.local/bin/plasmarchy\""
     // The player to show: we pick it ourselves instead of Plasma's automatic choice, because an idle player can
     // report "Playing" without any song and would hide the music that really plays. Only players with
     // a song count; a playing one wins over a paused one; a tab the user clicked wins over both.
@@ -55,64 +51,25 @@ PlasmoidItem {
         return { player: best, index: bestIndex, count: withSong }
     }
     readonly property var player: pick.player
-    // our mpv (YouTube Music) reports no cover: ask for it whenever the song changes
-    readonly property bool ownYoutube: !!player && player.identity === "mpv" && !!yt.running
-    property string ytCover: ""
-    readonly property string coverUrl: player && player.artUrl ? player.artUrl : ownYoutube ? ytCover : ""
-    onTitleChanged: if (ownYoutube) run("yt-now")
-    onOwnYoutubeChanged: if (ownYoutube) run("yt-now")
+    readonly property string coverUrl: player && player.artUrl ? player.artUrl : ""
     readonly property bool hasPlayer: !!player && player.track !== ""   // an idle player without a song doesn't count
     readonly property bool playing: !!player && player.playbackStatus === Mpris.PlaybackStatus.Playing
     readonly property string show: Plasmoid.configuration.show
     readonly property bool visibleInBar: show === "always" || (show === "auto" && hasPlayer)
-    // while mpv opens a stream it reports the link as title for a moment: show "Loading …" instead
+    // a player opening a stream (e.g. mpv) reports the link as title for a moment: show "Loading …" instead
     readonly property bool loading: !!player && /^(https?|ytdl):|watch\?v=/.test(player.track)
     readonly property string title: !player ? "" : loading ? i18n("Loading …") : player.track || player.identity
     readonly property string artist: !player || loading ? "" : (player.artist || "")
     readonly property string line: artist && title ? artist + " · " + title : title
 
-    property var yt: ({ installed: false, running: false })   // YouTube Music set up / playing (music.py status)
-    property string busy: ""
-    property string error: ""
-
-    // player names as people know them: our mpv plays YouTube Music
-    function niceName(identity) {
-        if (identity === "mpv" && yt.running) return "YouTube Music"
-        return identity
-    }
     function fmt(us) {
         var s = Math.max(0, Math.floor(us / 1000000))
         return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
     }
-    function run(args) { exec.connectSource("sh -c 'exec " + bin + " music " + args + "'") }
-    property var ytResults: []
-    function play(item) {
-        busy = item.name; error = ""
-        run("yt-play " + item.id)
-    }
-    function search(text) {
-        busy = "search"; error = ""
-        run("yt-search64 " + Qt.btoa(text))
-    }
 
     Mpris.Mpris2Model { id: mpris }
 
-    P5Support.DataSource {
-        id: exec
-        engine: "executable"
-        onNewData: (source, data) => {
-            disconnectSource(source)
-            var out
-            try { out = JSON.parse(data.stdout) } catch (e) { out = null }
-            if (out && out.error && source.indexOf(" music status") < 0) root.error = out.error
-            if (source.indexOf(" music status") >= 0) { if (out) root.yt = out }
-            else if (source.indexOf(" music yt-search64 ") >= 0) { if (out && out.items) root.ytResults = out.items; root.busy = "" }
-            else if (source.indexOf(" music yt-now") >= 0) { if (out) root.ytCover = out.image || "" }
-            else if (source.indexOf(" music play ") >= 0 || source.indexOf(" music yt-play ") >= 0) { root.busy = ""; root.run("status") }
-        }
-    }
-    onExpandedChanged: if (root.expanded) { if (player) player.updatePosition(); run("status") }
-    Component.onCompleted: run("status")
+    onExpandedChanged: if (root.expanded && player) player.updatePosition()
 
     Timer {   // MPRIS only reports the position on request
         interval: 1000; repeat: true
@@ -123,7 +80,7 @@ PlasmoidItem {
     Plasmoid.status: visibleInBar ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.HiddenStatus
     preferredRepresentation: compactRepresentation
     toolTipMainText: hasPlayer ? title : i18n("Music")
-    toolTipSubText: hasPlayer ? [artist, niceName(player.identity)].filter(x => x).join(" · ") : i18n("Nothing is playing")
+    toolTipSubText: hasPlayer ? [artist, player.identity].filter(x => x).join(" · ") : i18n("Nothing is playing")
 
     // --- Top bar ---------------------------------------------------------------------------------
     // a control in the top bar: a real button with a hover background, sized for the bar
@@ -156,7 +113,7 @@ PlasmoidItem {
 
     compactRepresentation: MouseArea {
         id: compact
-        // without a song only the wave stays in the bar (click opens the popup to pick one)
+        // without a song only the wave stays in the bar (click opens the popup)
         readonly property real textWidth: Plasmoid.configuration.showTitle && root.hasPlayer
             ? Math.min(label.implicitWidth, Kirigami.Units.gridUnit * Plasmoid.configuration.maxTitleWidth) : 0
         // a new title glides to its width instead of making the top bar jump
@@ -225,12 +182,16 @@ PlasmoidItem {
 
     // --- Popup ---------------------------------------------------------------------------------
     fullRepresentation: PlasmaExtras.Representation {
-        // same size as the system tray popups, and fixed: long titles elide instead of widening the popup
+        id: popup
+        // as wide as the system tray popups, and fixed: long titles elide instead of widening the popup;
+        // as high as what it shows
         Layout.preferredWidth: Kirigami.Units.gridUnit * 24
         Layout.maximumWidth: Kirigami.Units.gridUnit * 24
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 34   // room for the song list
         Layout.minimumWidth: Kirigami.Units.gridUnit * 24
-        Layout.minimumHeight: Kirigami.Units.gridUnit * 20
+        Layout.preferredHeight: content.implicitHeight + content.anchors.margins * 2
+                                + (popup.header.visible ? popup.header.implicitHeight : 0)
+        Layout.minimumHeight: Layout.preferredHeight
+        Layout.maximumHeight: Layout.preferredHeight
         collapseMarginsHint: true
 
         header: PlasmaExtras.PlasmoidHeading {
@@ -251,7 +212,7 @@ PlasmoidItem {
                             readonly property bool shown: !isMultiplexer && !!container && container.track !== ""
                             visible: shown
                             width: shown ? implicitWidth : 0
-                            text: container ? root.niceName(container.identity) : ""
+                            text: container ? container.identity : ""
                             onClicked: root.chosenIndex = index
                         }
                     }
@@ -260,6 +221,7 @@ PlasmoidItem {
         }
 
         ColumnLayout {
+            id: content
             anchors.fill: parent
             anchors.margins: Kirigami.Units.largeSpacing * 1.5
             spacing: Kirigami.Units.largeSpacing * 1.5
@@ -309,8 +271,9 @@ PlasmoidItem {
                     PC3.Label { Layout.fillWidth: true; visible: text !== ""; text: root.artist; elide: Text.ElideRight
                                 color: Kirigami.Theme.highlightColor }
                     PC3.Label { Layout.fillWidth: true; elide: Text.ElideRight; opacity: 0.45; font: Kirigami.Theme.smallFont
-                                text: root.hasPlayer ? root.niceName(root.player.identity)
-                                                     : i18n("Search for a song below to start.") }
+                                wrapMode: root.hasPlayer ? Text.NoWrap : Text.WordWrap; maximumLineCount: 2   // the hint may wrap
+                                text: root.hasPlayer ? root.player.identity
+                                                     : i18n("Start music in any app. It shows up here.") }
                     Item { Layout.fillHeight: true }
                     RowLayout {
                         Layout.leftMargin: -Kirigami.Units.smallSpacing   // the buttons' own padding lines them up with the text
@@ -345,197 +308,6 @@ PlasmoidItem {
                     PC3.Label { text: root.fmt(progress.value); font: Kirigami.Theme.smallFont; opacity: 0.6 }
                     Item { Layout.fillWidth: true }
                     PC3.Label { text: root.player ? root.fmt(root.player.length) : ""; font: Kirigami.Theme.smallFont; opacity: 0.6 }
-                }
-            }
-
-            Kirigami.Separator { Layout.fillWidth: true }
-
-            PlasmaExtras.SearchField {
-                Layout.fillWidth: true
-                visible: !!root.yt.installed
-                placeholderText: i18n("Search YouTube Music …")
-                onAccepted: if (text.trim()) root.search(text.trim())
-                onTextChanged: if (text === "") root.ytResults = []
-            }
-
-            // not set up yet: what to do, the command to copy, a terminal, or set it up automatically
-            ColumnLayout {
-                id: setupCard
-                readonly property string command: "sudo pacman -S --needed yt-dlp mpv-mpris"
-                // what to do in steps, so the text doesn't read as one block
-                readonly property var steps: [
-                    i18n("Click “%1”. Plasmarchy installs the two small packages it needs.", i18n("Set up automatically")),
-                    i18n("Search for a song. It starts a radio with similar music.")]
-                visible: !root.yt.installed
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.topMargin: Kirigami.Units.largeSpacing
-                spacing: Kirigami.Units.gridUnit
-                ColumnLayout {   // heading and intro
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-                    Kirigami.Heading {
-                        Layout.fillWidth: true
-                        level: 4
-                        wrapMode: Text.WordWrap
-                        text: i18n("YouTube Music isn't set up yet")
-                    }
-                    PC3.Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        lineHeight: 1.25
-                        opacity: 0.7
-                        text: i18n("Play YouTube Music right here and in the top bar.")
-                    }
-                }
-                ColumnLayout {   // numbered steps
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.largeSpacing
-                    Repeater {
-                        model: setupCard.steps
-                        RowLayout {
-                            required property int index
-                            required property string modelData
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.largeSpacing
-                            Rectangle {   // step number in the accent color
-                                Layout.alignment: Qt.AlignTop
-                                implicitWidth: Kirigami.Units.gridUnit * 1.2; implicitHeight: implicitWidth
-                                radius: width / 2
-                                color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.2)
-                                PC3.Label { anchors.centerIn: parent; text: index + 1
-                                            font.bold: true; color: Kirigami.Theme.highlightColor }
-                            }
-                            PC3.Label {
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                lineHeight: 1.25
-                                text: modelData
-                            }
-                        }
-                    }
-                }
-                RowLayout {   // set it up, or open a terminal
-                    spacing: Kirigami.Units.smallSpacing
-                    PC3.Button {
-                        text: i18n("Set up automatically")
-                        icon.name: "run-build"
-                        onClicked: {
-                            root.expanded = false
-                            exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music setup'")
-                        }
-                    }
-                    PC3.Button {
-                        text: i18n("Open terminal")
-                        icon.name: "utilities-terminal"
-                        onClicked: { root.expanded = false; exec.connectSource("sh -c 'exec \"$HOME/.local/bin/plasmarchy\" music open-terminal'") }
-                    }
-                }
-                Kirigami.Separator { Layout.fillWidth: true; opacity: 0.5 }
-                PC3.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    opacity: 0.7
-                    font: Kirigami.Theme.smallFont
-                    text: i18n("Prefer doing it yourself? Run this command in a terminal:")
-                }
-                RowLayout {   // the command, ready to copy
-                    Layout.fillWidth: true
-                    Layout.topMargin: -Kirigami.Units.largeSpacing   // belongs to the line above
-                    PC3.TextField {
-                        id: commandField
-                        Layout.fillWidth: true
-                        readOnly: true
-                        text: setupCard.command
-                        font.family: root.mono
-                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                    }
-                    PC3.ToolButton {
-                        icon.name: "edit-copy"
-                        onClicked: { commandField.selectAll(); commandField.copy(); commandField.deselect(); copied.visible = true }
-                        PC3.ToolTip { text: i18n("Copy") }
-                    }
-                }
-                PC3.Label {
-                    id: copied
-                    visible: false
-                    Layout.fillWidth: true
-                    Layout.topMargin: -Kirigami.Units.largeSpacing
-                    wrapMode: Text.WordWrap
-                    text: i18n("Copied. Paste it into the terminal with Ctrl+Shift+V.")
-                    font: Kirigami.Theme.smallFont
-                    color: Kirigami.Theme.positiveTextColor
-                }
-                Item { Layout.fillHeight: true }
-            }
-
-            // YouTube Music: search results
-            ColumnLayout {
-                visible: !!root.yt.installed
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: Kirigami.Units.largeSpacing
-                PC3.Label {
-                    visible: root.error !== ""
-                    text: root.error
-                    color: Kirigami.Theme.negativeTextColor
-                    wrapMode: Text.WordWrap; Layout.fillWidth: true
-                    font: Kirigami.Theme.smallFont
-                }
-                PC3.Label {
-                    visible: root.ytResults.length === 0 && root.busy === ""
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    opacity: 0.55
-                    font: Kirigami.Theme.smallFont
-                    text: i18n("Search for a song. It starts a radio with similar music.")
-                }
-                PC3.ScrollView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    ListView {
-                        id: list
-                        clip: true
-                        model: root.ytResults
-                        delegate: PC3.ItemDelegate {
-                            required property var modelData
-                            width: ListView.view.width
-                            topPadding: Kirigami.Units.smallSpacing; bottomPadding: Kirigami.Units.smallSpacing
-                            onClicked: root.play(modelData)
-                            contentItem: RowLayout {
-                                spacing: Kirigami.Units.largeSpacing
-                                Rectangle {
-                                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
-                                    Layout.preferredHeight: Layout.preferredWidth
-                                    radius: 3
-                                    color: Qt.alpha(Kirigami.Theme.highlightColor, 0.15)
-                                    clip: true
-                                    Image { anchors.fill: parent; source: modelData.image || ""; fillMode: Image.PreserveAspectCrop
-                                            asynchronous: true; visible: status === Image.Ready }
-                                    PC3.Label { anchors.centerIn: parent; visible: !modelData.image
-                                                text: String.fromCodePoint(0xF0CB8)
-                                                font.family: root.mono; color: Kirigami.Theme.highlightColor }
-                                }
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 0
-                                    PC3.Label { Layout.fillWidth: true; text: modelData.name; elide: Text.ElideRight }
-                                    PC3.Label { Layout.fillWidth: true; visible: text !== ""; text: modelData.sub || ""
-                                                elide: Text.ElideRight; opacity: 0.55; font: Kirigami.Theme.smallFont }
-                                }
-                                PC3.BusyIndicator {
-                                    visible: root.busy === modelData.name
-                                    running: visible
-                                    implicitWidth: Kirigami.Units.iconSizes.small; implicitHeight: implicitWidth
-                                }
-                            }
-                        }
-                        PC3.BusyIndicator {
-                            anchors.centerIn: parent
-                            visible: root.busy === "search" && list.count === 0
-                            running: visible
-                        }
-                    }
                 }
             }
         }

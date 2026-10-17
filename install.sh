@@ -189,7 +189,7 @@ t "$(cat <<'EOF'
   Logo:              menu "Style"  or  plasmarchy branding
   AI assistant:      robot icon top right  or  Meta+A
   Talk to your PC:   {0} (press again to send, say "stop" to end)
-  Music player:      top left, with YouTube Music built in (plasmarchy music setup)
+  Music player:      top left, shows and controls whatever plays, in any app
   Voice (optional, ~650 MB, local):     plasmarchy voice setup
   Local AI (optional, fallback AI):     plasmarchy llm setup
   Undo:              {1}
